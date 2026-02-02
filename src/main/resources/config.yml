@@ -18,7 +18,7 @@
 # ===================================================================
 
 # Configuration version - DO NOT MODIFY
-config-version: 22
+config-version: 24
 
 # ===================================================================
 #                         Proxy Configuration
@@ -179,6 +179,9 @@ features:
   team_chat: true
   team_message_command: true
   
+  # Visual Features
+  team_glow: true
+  
   # Cross-Server Display
   show_cross_server_status: true
 
@@ -209,6 +212,33 @@ settings:
   main_color: "#4C9DDE"
   accent_color: "#FFD700"
   currency_format: ""
+  
+  # Team Glow Settings
+  # owner: Dark Red (DARK_RED)
+  # co_owner: Red (RED) - optional, falls back to mod if not set or similar
+  # mod: Dark Green (DARK_GREEN)
+  # member: White (WHITE)
+  glow:
+    enabled: true
+    colors:
+      owner: "DARK_RED"
+      co_owner: "RED"
+      mod: "DARK_GREEN"
+      member: "WHITE"
+    # If true, you can only see the glow of your OWN team members.
+    # If false, you see everyone's glow (if they are in a team).
+    only_show_own_team: true
+    # Maximum distance (in blocks) to see the glow. Default: 30
+    range: 30
+    # Interval (in ticks) to check for glow updates. Default: 20 (1 second)
+    check_interval: 20
+
+  # --- bStats Metrics ---
+  # bStats collects some anonymous data for plugin authors like server version, number of players, etc.
+  # To see what data is collected, go to https://bstats.org/what-is-collected/
+  # You can disable this here if you wish.
+  bstats:
+    enabled: true
   
   # Team Limits
   max_team_size: 10

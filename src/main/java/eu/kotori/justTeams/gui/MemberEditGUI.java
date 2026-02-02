@@ -1,4 +1,5 @@
 package eu.kotori.justTeams.gui;
+
 import eu.kotori.justTeams.JustTeams;
 import eu.kotori.justTeams.team.Team;
 import eu.kotori.justTeams.team.TeamPlayer;
@@ -21,12 +22,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
 public class MemberEditGUI implements IRefreshableGUI, InventoryHolder {
     private final JustTeams plugin;
     private final Team team;
     private final Player viewer;
     private final UUID targetUuid;
     private final Inventory inventory;
+
     public MemberEditGUI(JustTeams plugin, Team team, Player viewer, UUID targetUuid) {
         this.plugin = plugin;
         this.team = team;
@@ -41,14 +44,17 @@ public class MemberEditGUI implements IRefreshableGUI, InventoryHolder {
         this.inventory = Bukkit.createInventory(this, size, plugin.getMiniMessage().deserialize(title));
         initializeItems();
     }
+
     public void initializeItems() {
         inventory.clear();
         TeamPlayer targetMember = getTargetMember();
-        if (targetMember == null) return;
+        if (targetMember == null)
+            return;
         GuiConfigManager guiManager = plugin.getGuiConfigManager();
         ConfigurationSection guiConfig = guiManager.getGUI("member-edit-gui");
         ConfigurationSection itemsSection = guiConfig.getConfigurationSection("items");
-        if (itemsSection == null) return;
+        if (itemsSection == null)
+            return;
         setItemFromConfig("player-info-head", itemsSection);
         boolean isSelfView = targetUuid.equals(viewer.getUniqueId());
         if (!isSelfView) {
@@ -76,7 +82,8 @@ public class MemberEditGUI implements IRefreshableGUI, InventoryHolder {
         setItemFromConfig("back-button", itemsSection);
         ConfigurationSection fillConfig = guiConfig.getConfigurationSection("fill-item");
         if (fillConfig != null) {
-            ItemStack fillItem = new ItemBuilder(Material.matchMaterial(fillConfig.getString("material", "GRAY_STAINED_GLASS_PANE")))
+            ItemStack fillItem = new ItemBuilder(
+                    Material.matchMaterial(fillConfig.getString("material", "GRAY_STAINED_GLASS_PANE")))
                     .withName(fillConfig.getString("name", " "))
                     .build();
             for (int i = 0; i < inventory.getSize(); i++) {
@@ -86,9 +93,13 @@ public class MemberEditGUI implements IRefreshableGUI, InventoryHolder {
             }
         }
     }
+
     private void setItemFromConfig(String key, ConfigurationSection parentSection) {
         ConfigurationSection itemConfig = parentSection.getConfigurationSection(key);
-        if (itemConfig == null) return;
+        if (itemConfig == null)
+            return;
+        if (!itemConfig.getBoolean("enabled", true))
+            return;
         Material material = Material.matchMaterial(itemConfig.getString("material", "STONE"));
         String name = replacePlaceholders(itemConfig.getString("name", ""));
         List<String> lore = itemConfig.getStringList("lore").stream()
@@ -101,9 +112,11 @@ public class MemberEditGUI implements IRefreshableGUI, InventoryHolder {
         }
         inventory.setItem(slot, builder.build());
     }
+
     private String replacePlaceholders(String text) {
         TeamPlayer targetMember = getTargetMember();
-        if (targetMember == null) return text;
+        if (targetMember == null)
+            return text;
         OfflinePlayer targetPlayer = Bukkit.getOfflinePlayer(targetUuid);
         String joinDate = formatJoinDate(targetMember.getJoinDate());
         return text
@@ -115,16 +128,20 @@ public class MemberEditGUI implements IRefreshableGUI, InventoryHolder {
                 .replace("<set_home_status>", getStatus(targetMember.canSetHome()))
                 .replace("<use_home_status>", getStatus(targetMember.canUseHome()));
     }
+
     private String getStatus(boolean hasPerm) {
         return hasPerm ? "<green>ENABLED" : "<red>DISABLED";
     }
+
     private String getRoleName(TeamRole role) {
         return plugin.getGuiConfigManager().getRoleName(role.name());
     }
+
     private String formatJoinDate(Instant joinDate) {
         try {
             if (joinDate != null) {
-                String dateFormat = plugin.getGuiConfigManager().getPlaceholder("date_time.join_date_format", "dd MMM yyyy");
+                String dateFormat = plugin.getGuiConfigManager().getPlaceholder("date_time.join_date_format",
+                        "dd MMM yyyy");
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern(dateFormat)
                         .withZone(ZoneOffset.UTC);
                 return formatter.format(joinDate);
@@ -136,21 +153,27 @@ public class MemberEditGUI implements IRefreshableGUI, InventoryHolder {
             return plugin.getGuiConfigManager().getPlaceholder("date_time.unknown_date", "Unknown");
         }
     }
+
     public void open() {
         viewer.openInventory(inventory);
     }
+
     public void refresh() {
         open();
     }
+
     public UUID getTargetUuid() {
         return targetUuid;
     }
+
     public TeamPlayer getTargetMember() {
         return team.getMember(targetUuid);
     }
+
     public Team getTeam() {
         return team;
     }
+
     public Inventory getInventory() {
         return inventory;
     }

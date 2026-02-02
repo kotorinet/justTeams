@@ -1,4 +1,5 @@
 package eu.kotori.justTeams.team;
+
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import eu.kotori.justTeams.JustTeams;
@@ -10,10 +11,7 @@ import eu.kotori.justTeams.gui.admin.AdminGUI;
 import eu.kotori.justTeams.gui.MemberEditGUI;
 import eu.kotori.justTeams.storage.IDataStorage;
 import eu.kotori.justTeams.storage.IDataStorage.CrossServerUpdate;
-import eu.kotori.justTeams.team.Team;
-import eu.kotori.justTeams.team.TeamPlayer;
-import eu.kotori.justTeams.team.TeamRole;
-import eu.kotori.justTeams.team.BlacklistedPlayer;
+
 import eu.kotori.justTeams.util.CancellableTask;
 import eu.kotori.justTeams.util.EffectsUtil;
 import eu.kotori.justTeams.util.InventoryUtil;
@@ -31,7 +29,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,6 +46,7 @@ import java.util.Map;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+
 public class TeamManager {
     private final JustTeams plugin;
     private final IDataStorage storage;
@@ -64,6 +63,7 @@ public class TeamManager {
     private final Map<Integer, Long> teamLastModified = new ConcurrentHashMap<>();
     private final Object cacheLock = new Object();
     private final AtomicBoolean syncInProgress = new AtomicBoolean(false);
+
     public void markTeamModified(int teamId) {
         if (teamId <= 0) {
             return;
@@ -72,6 +72,7 @@ public class TeamManager {
             teamLastModified.put(teamId, System.currentTimeMillis());
         }
     }
+
     private String formatCurrency(double amount) {
         if (amount >= 1_000_000_000) {
             return String.format("%.2fB", amount / 1_000_000_000);
@@ -83,6 +84,7 @@ public class TeamManager {
             return String.format("%.2f", amount);
         }
     }
+
     private boolean hasTeamBeenModified(int teamId, long withinMs) {
         synchronized (cacheLock) {
             Long lastModified = teamLastModified.get(teamId);
@@ -92,13 +94,7 @@ public class TeamManager {
             return (System.currentTimeMillis() - lastModified) < withinMs;
         }
     }
-    private List<Team> getRecentlyModifiedTeams(long withinMs) {
-        synchronized (cacheLock) {
-            return teamNameCache.values().stream()
-                .filter(team -> hasTeamBeenModified(team.getId(), withinMs))
-                .collect(Collectors.toList());
-        }
-    }
+
     public TeamManager(JustTeams plugin) {
         this.plugin = plugin;
         this.storage = plugin.getStorageManager().getStorage();
@@ -111,34 +107,34 @@ public class TeamManager {
                 .expireAfterWrite(1, TimeUnit.MINUTES)
                 .build();
     }
-    
 
     public void publishCrossServerUpdate(int teamId, String updateType, String playerUuid, String data) {
         if (plugin.getRedisManager() != null && plugin.getRedisManager().isAvailable()) {
             plugin.getRedisManager().publishTeamUpdate(teamId, updateType, playerUuid, data)
-                .thenAccept(success -> {
-                    if (!success) {
-                        plugin.getLogger().info("Redis publish failed for " + updateType + ", using MySQL fallback");
-                    }
-                });
+                    .thenAccept(success -> {
+                        if (!success) {
+                            plugin.getLogger()
+                                    .info("Redis publish failed for " + updateType + ", using MySQL fallback");
+                        }
+                    });
         }
-        
+
         plugin.getTaskRunner().runAsync(() -> {
-            String serverName = plugin.getConfigManager().getServerIdentifier();
-            storage.addCrossServerUpdate(teamId, updateType, 
-                playerUuid != null ? playerUuid : "", 
-                "ALL_SERVERS");
-            
+            storage.addCrossServerUpdate(teamId, updateType,
+                    playerUuid != null ? playerUuid : "",
+                    "ALL_SERVERS");
+
             if (plugin.getConfigManager().isDebugEnabled()) {
-                plugin.getLogger().info("✓ Wrote cross-server update to MySQL: " + updateType + 
-                    " for team " + teamId + " (fallback for non-Redis servers)");
+                plugin.getLogger().info("✓ Wrote cross-server update to MySQL: " + updateType +
+                        " for team " + teamId + " (fallback for non-Redis servers)");
             }
         });
     }
-    
+
     public void handlePendingTeleport(Player player) {
         String currentServer = plugin.getConfigManager().getServerIdentifier();
-        plugin.getDebugLogger().log("Handling pending teleport check for " + player.getName() + " on server " + currentServer);
+        plugin.getDebugLogger()
+                .log("Handling pending teleport check for " + player.getName() + " on server " + currentServer);
         plugin.getTaskRunner().runAsync(() -> {
             storage.getAndRemovePendingTeleport(player.getUniqueId(), currentServer).ifPresent(location -> {
                 plugin.getDebugLogger().log("Found pending teleport for " + player.getName() + " to " + location);
@@ -148,6 +144,7 @@ public class TeamManager {
             });
         });
     }
+
     public List<Team> getAllTeams() {
         synchronized (cacheLock) {
             if (teamNameCache.isEmpty()) {
@@ -159,6 +156,7 @@ public class TeamManager {
             return new ArrayList<>(teamNameCache.values());
         }
     }
+
     public void adminDisbandTeam(Player admin, String teamName) {
         plugin.getTaskRunner().runAsync(() -> {
             Optional<Team> teamOpt = storage.findTeamByName(teamName);
@@ -172,14 +170,15 @@ public class TeamManager {
                     if (confirmed) {
                         plugin.getTaskRunner().runAsync(() -> {
                             storage.deleteTeam(team.getId());
-                            
-                            publishCrossServerUpdate(team.getId(), "TEAM_DISBANDED", 
-                                admin.getUniqueId().toString(), team.getName());
-                            
+
+                            publishCrossServerUpdate(team.getId(), "TEAM_DISBANDED",
+                                    admin.getUniqueId().toString(), team.getName());
+
                             plugin.getTaskRunner().run(() -> {
                                 team.broadcast("admin_team_disbanded_broadcast");
                                 uncacheTeam(team.getId());
-                                messageManager.sendMessage(admin, "admin_team_disbanded", Placeholder.unparsed("team", team.getName()));
+                                messageManager.sendMessage(admin, "admin_team_disbanded",
+                                        Placeholder.unparsed("team", team.getName()));
                                 EffectsUtil.playSound(admin, EffectsUtil.SoundType.SUCCESS);
                             });
                         });
@@ -190,6 +189,7 @@ public class TeamManager {
             });
         });
     }
+
     public void adminOpenEnderChest(Player admin, String teamNameOrTag) {
 
         if (!plugin.getConfigManager().isTeamEnderchestEnabled()) {
@@ -214,8 +214,9 @@ public class TeamManager {
 
             if (teamOpt.isEmpty()) {
                 teamOpt = storage.getAllTeams().stream()
-                    .filter(team -> team != null && team.getTag() != null && team.getTag().equalsIgnoreCase(teamNameOrTag))
-                    .findFirst();
+                        .filter(team -> team != null && team.getTag() != null
+                                && team.getTag().equalsIgnoreCase(teamNameOrTag))
+                        .findFirst();
             }
 
             final Optional<Team> finalTeamOpt = teamOpt;
@@ -230,7 +231,8 @@ public class TeamManager {
                 } else {
                     if (team.tryLockEnderChest()) {
                         plugin.getTaskRunner().runAsync(() -> {
-                            boolean lockAcquired = storage.acquireEnderChestLock(team.getId(), configManager.getServerIdentifier());
+                            boolean lockAcquired = storage.acquireEnderChestLock(team.getId(),
+                                    configManager.getServerIdentifier());
                             plugin.getTaskRunner().runOnEntity(admin, () -> {
                                 if (lockAcquired) {
                                     loadAndOpenEnderChestDirect(admin, team);
@@ -249,6 +251,7 @@ public class TeamManager {
             });
         });
     }
+
     private void loadTeamIntoCache(Team team) {
         synchronized (cacheLock) {
             String lowerCaseName = team.getName().toLowerCase();
@@ -266,15 +269,17 @@ public class TeamManager {
             }
             teamNameCache.put(lowerCaseName, team);
             team.getMembers().forEach(member -> playerTeamCache.put(member.getPlayerUuid(), team));
-            plugin.getLogger().info("Loaded team " + team.getName() + " with " + team.getMembers().size() + " members and " + joinRequests.size() + " join requests");
+            plugin.getLogger().info("Loaded team " + team.getName() + " with " + team.getMembers().size()
+                    + " members and " + joinRequests.size() + " join requests");
         }
     }
+
     public void uncacheTeam(int teamId) {
         synchronized (cacheLock) {
             Team team = teamNameCache.values().stream()
-                .filter(t -> t.getId() == teamId)
-                .findFirst()
-                .orElse(null);
+                    .filter(t -> t.getId() == teamId)
+                    .findFirst()
+                    .orElse(null);
             if (team != null) {
                 if (team.getEnderChest() != null) {
                     saveEnderChest(team);
@@ -285,6 +290,7 @@ public class TeamManager {
             }
         }
     }
+
     public void addTeamToCache(Team team) {
         synchronized (cacheLock) {
             teamNameCache.put(team.getName().toLowerCase(), team);
@@ -293,115 +299,139 @@ public class TeamManager {
             }
         }
     }
-    
+
     public void removeFromPlayerTeamCache(UUID playerUuid) {
         synchronized (cacheLock) {
             playerTeamCache.remove(playerUuid);
         }
     }
-    
+
     public void addPlayerToTeamCache(UUID playerUuid, Team team) {
         synchronized (cacheLock) {
             playerTeamCache.put(playerUuid, team);
         }
     }
-    
+
     public Optional<Team> getTeamById(int teamId) {
         synchronized (cacheLock) {
             Team cachedTeam = teamNameCache.values().stream()
-                .filter(t -> t.getId() == teamId)
-                .findFirst()
-                .orElse(null);
-            
+                    .filter(t -> t.getId() == teamId)
+                    .findFirst()
+                    .orElse(null);
+
             if (cachedTeam != null) {
                 return Optional.of(cachedTeam);
             }
-            
+
             Optional<Team> dbTeam = storage.findTeamById(teamId);
             if (dbTeam.isPresent()) {
                 loadTeamIntoCache(dbTeam.get());
                 return dbTeam;
             }
-            
+
             return Optional.empty();
         }
     }
-    
 
     public Team getPlayerTeam(UUID playerUuid) {
+        UUID effectiveUuid = getEffectiveUuid(playerUuid);
         synchronized (cacheLock) {
-            UUID effectiveUuid = getEffectiveUuid(playerUuid);
             Team cachedTeam = playerTeamCache.get(effectiveUuid);
             if (cachedTeam != null) {
-                return cachedTeam; 
+                return cachedTeam;
             }
-            
-            try {
-                Optional<Team> dbTeam = CompletableFuture
+        }
+
+        try {
+            Optional<Team> dbTeam = CompletableFuture
                     .supplyAsync(() -> storage.findTeamByPlayer(effectiveUuid))
                     .orTimeout(5, TimeUnit.SECONDS)
                     .exceptionally(ex -> {
-                        plugin.getLogger().warning("Failed to fetch team for " + playerUuid + ": " + ex.getMessage());
+                        plugin.getLogger()
+                                .warning("Failed to fetch team for " + playerUuid + ": " + ex.getMessage());
                         if (plugin.getConfigManager().isDebugEnabled()) {
                             ex.printStackTrace();
                         }
                         return Optional.empty();
                     })
                     .join();
-                    
-                if (dbTeam.isPresent()) {
+
+            if (dbTeam.isPresent()) {
+                synchronized (cacheLock) {
                     loadTeamIntoCache(dbTeam.get());
-                    return dbTeam.get();
                 }
-            } catch (CompletionException e) {
-                plugin.getLogger().severe("Database query failed for player " + playerUuid + ": " + e.getMessage());
-                if (plugin.getConfigManager().isDebugEnabled()) {
-                    e.printStackTrace();
-                }
+                return dbTeam.get();
             }
-            return null;
+        } catch (CompletionException e) {
+            plugin.getLogger().severe("Database query failed for player " + playerUuid + ": " + e.getMessage());
+            if (plugin.getConfigManager().isDebugEnabled()) {
+                e.printStackTrace();
+            }
         }
+        return null;
     }
 
     public CompletableFuture<Team> getPlayerTeamAsync(UUID playerUuid) {
-        return CompletableFuture.supplyAsync(() -> {
-            synchronized (cacheLock) {
-                UUID effectiveUuid = getEffectiveUuid(playerUuid);
-                Team cachedTeam = playerTeamCache.get(effectiveUuid);
-                if (cachedTeam != null) {
-                    return cachedTeam;
-                }
-                
-                try {
-                    Optional<Team> dbTeam = CompletableFuture
-                        .supplyAsync(() -> storage.findTeamByPlayer(effectiveUuid))
-                        .orTimeout(5, TimeUnit.SECONDS)
-                        .exceptionally(ex -> {
-                            plugin.getLogger().warning("Failed to fetch team (async) for " + playerUuid + ": " + ex.getMessage());
-                            return Optional.empty();
-                        })
-                        .join();
-                        
-                    if (dbTeam.isPresent()) {
-                        loadTeamIntoCache(dbTeam.get());
-                        return dbTeam.get();
-                    }
-                } catch (Exception e) {
-                    plugin.getLogger().severe("Error fetching team data (async): " + e.getMessage());
-                    if (plugin.getConfigManager().isDebugEnabled()) {
-                        e.printStackTrace();
-                    }
-                }
-                return null;
+        UUID effectiveUuid = getEffectiveUuid(playerUuid);
+        synchronized (cacheLock) {
+            Team cachedTeam = playerTeamCache.get(effectiveUuid);
+            if (cachedTeam != null) {
+                return CompletableFuture.completedFuture(cachedTeam);
             }
+        }
+
+        return CompletableFuture.supplyAsync(() -> storage.findTeamByPlayer(effectiveUuid))
+                .orTimeout(5, TimeUnit.SECONDS)
+                .handle((opt, ex) -> {
+                    if (ex != null) {
+                        plugin.getLogger().warning(
+                                "Failed to fetch team asynchronously for " + playerUuid + ": " + ex.getMessage());
+                        if (plugin.getConfigManager().isDebugEnabled()) {
+                            ex.printStackTrace();
+                        }
+                        return null;
+                    }
+                    if (opt.isPresent()) {
+                        synchronized (cacheLock) {
+                            loadTeamIntoCache(opt.get());
+                        }
+                        return opt.get();
+                    }
+                    return null;
+                });
+    }
+
+    public void adminTeleportTeamHome(Player admin, String teamName) {
+        plugin.getTaskRunner().runAsync(() -> {
+            Optional<Team> teamOpt = storage.findTeamByName(teamName);
+            if (teamOpt.isEmpty()) {
+                plugin.getTaskRunner().runOnEntity(admin, () -> {
+                    plugin.getMessageManager().sendMessage(admin, "team_not_found");
+                });
+                return;
+            }
+
+            Team team = teamOpt.get();
+            Location home = team.getHomeLocation();
+
+            plugin.getTaskRunner().runOnEntity(admin, () -> {
+                if (home == null) {
+                    plugin.getMessageManager().sendMessage(admin, "admin_home_not_set",
+                            Placeholder.unparsed("team", team.getName()));
+                } else {
+                    admin.teleport(home);
+                    plugin.getMessageManager().sendMessage(admin, "admin_teleported_home",
+                            Placeholder.unparsed("team", team.getName()));
+                }
+            });
         });
     }
-    
 
     public Team getPlayerTeamCached(UUID playerUuid) {
         UUID effectiveUuid = getEffectiveUuid(playerUuid);
         return playerTeamCache.get(effectiveUuid);
     }
+
     private UUID getEffectiveUuid(UUID playerUuid) {
         if (!plugin.getConfigManager().isBedrockSupportEnabled()) {
             return playerUuid;
@@ -423,6 +453,7 @@ public class TeamManager {
                 return playerUuid;
         }
     }
+
     public Team getTeamByName(String teamName) {
         synchronized (cacheLock) {
             Team cachedTeam = teamNameCache.get(teamName.toLowerCase());
@@ -437,6 +468,7 @@ public class TeamManager {
             return null;
         }
     }
+
     public void unloadPlayer(Player player) {
         CancellableTask task = teleportTasks.remove(player.getUniqueId());
         if (task != null) {
@@ -448,13 +480,14 @@ public class TeamManager {
             boolean isTeamEmptyOnline = team.getMembers().stream()
                     .allMatch(member -> member.getPlayerUuid().equals(player.getUniqueId()) || !member.isOnline());
             if (isTeamEmptyOnline) {
-                if(team.getEnderChest() != null && !team.getEnderChest().getViewers().isEmpty()){
+                if (team.getEnderChest() != null && !team.getEnderChest().getViewers().isEmpty()) {
                     saveEnderChest(team);
                 }
                 uncacheTeam(team.getId());
             }
         }
     }
+
     public void loadPlayerTeam(Player player) {
         if (playerTeamCache.containsKey(player.getUniqueId())) {
             return;
@@ -466,32 +499,41 @@ public class TeamManager {
                     Team team = teamOpt.get();
                     loadTeamIntoCache(team);
                     checkPendingJoinRequests(player, team);
+                    plugin.getGlowManager().refreshGlow(player);
                 }
             });
         });
     }
+
     private void checkPendingJoinRequests(Player player, Team team) {
         if (team.hasElevatedPermissions(player.getUniqueId())) {
             List<UUID> requests = storage.getJoinRequests(team.getId());
             if (!requests.isEmpty()) {
-                plugin.getLogger().info("Player " + player.getName() + " has " + requests.size() + " pending join requests");
-                messageManager.sendMessage(player, "join_request_count", Placeholder.unparsed("count", String.valueOf(requests.size())));
-                messageManager.sendMessage(player, "join_request_notification", Placeholder.unparsed("player", "a player"));
+                plugin.getLogger()
+                        .info("Player " + player.getName() + " has " + requests.size() + " pending join requests");
+                messageManager.sendMessage(player, "join_request_count",
+                        Placeholder.unparsed("count", String.valueOf(requests.size())));
+                messageManager.sendMessage(player, "join_request_notification",
+                        Placeholder.unparsed("player", "a player"));
             }
         }
     }
+
     public String validateTeamName(String name) {
         if (containsBlockedFormattingCodes(name)) {
             return messageManager.getRawMessage("name_contains_blocked_codes");
         }
         String plainName = stripColorCodes(name);
         if (plainName.length() < configManager.getMinNameLength()) {
-            return messageManager.getRawMessage("name_too_short").replace("<min_length>", String.valueOf(configManager.getMinNameLength()));
+            return messageManager.getRawMessage("name_too_short").replace("<min_length>",
+                    String.valueOf(configManager.getMinNameLength()));
         }
         if (plainName.length() > configManager.getMaxNameLength()) {
-            return messageManager.getRawMessage("name_too_long").replace("<max_length>", String.valueOf(configManager.getMaxNameLength()));
+            return messageManager.getRawMessage("name_too_long").replace("<max_length>",
+                    String.valueOf(configManager.getMaxNameLength()));
         }
-        if (!plainName.matches("^[a-zA-Z0-9_]{" + configManager.getMinNameLength() + "," + configManager.getMaxNameLength() + "}$")) {
+        if (!plainName.matches(
+                "^[a-zA-Z0-9_]{" + configManager.getMinNameLength() + "," + configManager.getMaxNameLength() + "}$")) {
             return messageManager.getRawMessage("name_invalid");
         }
         if (storage.findTeamByName(plainName).isPresent() || teamNameCache.containsKey(plainName.toLowerCase())) {
@@ -499,18 +541,23 @@ public class TeamManager {
         }
         return null;
     }
+
     private String stripColorCodes(String text) {
-        if (text == null) return "";
-        return text.replaceAll("(?i)&[0-9A-FK-OR]", "").replaceAll("(?i)<#[0-9A-F]{6}>", "").replaceAll("(?i)</#[0-9A-F]{6}>", "");
+        if (text == null)
+            return "";
+        return text.replaceAll("(?i)&[0-9A-FK-OR]", "").replaceAll("(?i)<#[0-9A-F]{6}>", "")
+                .replaceAll("(?i)</#[0-9A-F]{6}>", "");
     }
 
     private boolean containsFormattingCodes(String text) {
-        if (text == null) return false;
+        if (text == null)
+            return false;
         return text.matches(".*(?i)&[0-9A-FK-OR].*");
     }
 
     private boolean containsBlockedFormattingCodes(String text) {
-        if (text == null) return false;
+        if (text == null)
+            return false;
         if (!configManager.areFormattingCodesAllowed()) {
             return containsFormattingCodes(text);
         }
@@ -553,18 +600,20 @@ public class TeamManager {
             }
             boolean defaultPvp = configManager.getDefaultPvpStatus();
             boolean defaultPublic = configManager.isDefaultPublicStatus();
-            storage.createTeam(name, tag, owner.getUniqueId(), defaultPvp, defaultPublic).ifPresent(team -> {
+            storage.createTeam(name, tag, owner.getUniqueId(), defaultPvp, defaultPublic, true).ifPresent(team -> {
                 plugin.getTaskRunner().runOnEntity(owner, () -> {
                     loadTeamIntoCache(team);
                     messageManager.sendMessage(owner, "team_created", Placeholder.unparsed("team", team.getName()));
                     EffectsUtil.playSound(owner, EffectsUtil.SoundType.SUCCESS);
-                    
+
                     plugin.getWebhookHelper().sendTeamCreateWebhook(owner, team);
-                    
-                    publishCrossServerUpdate(team.getId(), "TEAM_CREATED", owner.getUniqueId().toString(), team.getName());
-                    
+
+                    publishCrossServerUpdate(team.getId(), "TEAM_CREATED", owner.getUniqueId().toString(),
+                            team.getName());
+
                     if (plugin.getConfigManager().isBroadcastTeamCreatedEnabled()) {
-                        Component broadcastMessage = plugin.getMiniMessage().deserialize(plugin.getMessageManager().getRawMessage("team_created_broadcast"),
+                        Component broadcastMessage = plugin.getMiniMessage().deserialize(
+                                plugin.getMessageManager().getRawMessage("team_created_broadcast"),
                                 Placeholder.unparsed("player", owner.getName()),
                                 Placeholder.unparsed("team", team.getName()));
                         Bukkit.broadcast(broadcastMessage);
@@ -573,6 +622,60 @@ public class TeamManager {
             });
         });
     }
+
+    public void setTeamColor(Player owner, String colorName) {
+        Team team = getPlayerTeam(owner.getUniqueId());
+        if (team == null) {
+            messageManager.sendMessage(owner, "player_not_in_team");
+            EffectsUtil.playSound(owner, EffectsUtil.SoundType.ERROR);
+            return;
+        }
+        if (!team.hasElevatedPermissions(owner.getUniqueId())) {
+            messageManager.sendMessage(owner, "must_be_owner_or_co_owner");
+            EffectsUtil.playSound(owner, EffectsUtil.SoundType.ERROR);
+            return;
+        }
+
+        org.bukkit.ChatColor color = null;
+        if (!colorName.equalsIgnoreCase("reset")) {
+            try {
+                color = org.bukkit.ChatColor.valueOf(colorName.toUpperCase());
+                if (!color.isColor()) {
+                    messageManager.sendMessage(owner, "invalid_color");
+                    EffectsUtil.playSound(owner, EffectsUtil.SoundType.ERROR);
+                    return;
+                }
+            } catch (IllegalArgumentException e) {
+                messageManager.sendMessage(owner, "invalid_color");
+                EffectsUtil.playSound(owner, EffectsUtil.SoundType.ERROR);
+                return;
+            }
+        }
+
+        final org.bukkit.ChatColor finalColor = color;
+        String finalColorName = (color != null) ? color.name() : null;
+
+        plugin.getTaskRunner().runAsync(() -> {
+            storage.setTeamColor(team.getId(), finalColorName);
+            plugin.getTaskRunner().run(() -> {
+                team.setColor(finalColor);
+                for (TeamPlayer member : team.getMembers()) {
+                    Player memberPlayer = Bukkit.getPlayer(member.getPlayerUuid());
+                    if (memberPlayer != null && memberPlayer.isOnline()) {
+                        plugin.getGlowManager().refreshGlow(memberPlayer);
+                    }
+                }
+                if (finalColor != null) {
+                    messageManager.sendMessage(owner, "team_color_updated",
+                            Placeholder.unparsed("color", finalColor.name()));
+                } else {
+                    messageManager.sendMessage(owner, "team_color_reset");
+                }
+                EffectsUtil.playSound(owner, EffectsUtil.SoundType.SUCCESS);
+            });
+        });
+    }
+
     public void disbandTeam(Player owner) {
         Team team = getPlayerTeam(owner.getUniqueId());
         if (team == null) {
@@ -589,17 +692,51 @@ public class TeamManager {
             if (confirmed) {
                 plugin.getTaskRunner().runAsync(() -> {
                     int memberCount = team.getMembers().size();
-                    uncacheTeam(team.getId());
-                    storage.deleteTeam(team.getId());
-                    
-                    publishCrossServerUpdate(team.getId(), "TEAM_DISBANDED", owner.getUniqueId().toString(), team.getName());
-                    
+
+                    List<UUID> memberUuids = team.getMembers().stream()
+                            .map(TeamPlayer::getPlayerUuid)
+                            .collect(Collectors.toList());
+                    String teamName = team.getName();
+                    int teamId = team.getId();
+
+                    storage.deleteTeam(teamId);
+
+                    publishCrossServerUpdate(teamId, "TEAM_DISBANDED", owner.getUniqueId().toString(), teamName);
+
                     plugin.getTaskRunner().run(() -> {
-                        plugin.getWebhookHelper().sendTeamDeleteWebhook(owner, team, memberCount);
-                        
-                        if (plugin.getConfigManager().isBroadcastTeamDisbandedEnabled()) {
-                            team.broadcast("team_disbanded_broadcast", Placeholder.unparsed("team", team.getName()));
+                        for (UUID memberUuid : memberUuids) {
+                            Player memberPlayer = Bukkit.getPlayer(memberUuid);
+                            if (memberPlayer != null && memberPlayer.isOnline()) {
+                                memberPlayer.closeInventory();
+
+                                playerTeamCache.remove(memberUuid);
+
+                                plugin.getGlowManager().stopGlowForPlayer(memberPlayer, team);
+
+                                if (!memberUuid.equals(owner.getUniqueId())) {
+                                    messageManager.sendMessage(memberPlayer, "team_disbanded_broadcast",
+                                            Placeholder.unparsed("team", teamName));
+                                    EffectsUtil.playSound(memberPlayer, EffectsUtil.SoundType.ERROR);
+                                }
+                            } else {
+                                playerTeamCache.remove(memberUuid);
+                            }
                         }
+
+                        synchronized (cacheLock) {
+                            teamNameCache.remove(teamName.toLowerCase());
+                            teamLastModified.remove(teamId);
+                        }
+
+                        plugin.getWebhookHelper().sendTeamDeleteWebhook(owner, team, memberCount);
+
+                        if (plugin.getConfigManager().isBroadcastTeamDisbandedEnabled()) {
+                            Component broadcastMessage = plugin.getMiniMessage().deserialize(
+                                    messageManager.getRawMessage("team_disbanded_broadcast"),
+                                    Placeholder.unparsed("team", teamName));
+                            Bukkit.broadcast(broadcastMessage);
+                        }
+
                         messageManager.sendMessage(owner, "team_disbanded");
                         EffectsUtil.playSound(owner, EffectsUtil.SoundType.SUCCESS);
                     });
@@ -609,6 +746,7 @@ public class TeamManager {
             }
         }).open();
     }
+
     public void invitePlayer(Player inviter, Player target) {
         Team team = getPlayerTeam(inviter.getUniqueId());
         if (team == null) {
@@ -627,7 +765,8 @@ public class TeamManager {
             return;
         }
         if (getPlayerTeam(target.getUniqueId()) != null) {
-            messageManager.sendMessage(inviter, "target_already_in_team", Placeholder.unparsed("target", target.getName()));
+            messageManager.sendMessage(inviter, "target_already_in_team",
+                    Placeholder.unparsed("target", target.getName()));
             EffectsUtil.playSound(inviter, EffectsUtil.SoundType.ERROR);
             return;
         }
@@ -640,18 +779,21 @@ public class TeamManager {
             if (storage.isPlayerBlacklisted(team.getId(), target.getUniqueId())) {
                 List<BlacklistedPlayer> blacklist = storage.getTeamBlacklist(team.getId());
                 BlacklistedPlayer blacklistedPlayer = blacklist.stream()
-                    .filter(bp -> bp != null && bp.getPlayerUuid() != null && bp.getPlayerUuid().equals(target.getUniqueId()))
-                    .findFirst()
-                    .orElse(null);
-                String blacklisterName = blacklistedPlayer != null ? blacklistedPlayer.getBlacklistedByName() : "Unknown";
+                        .filter(bp -> bp != null && bp.getPlayerUuid() != null
+                                && bp.getPlayerUuid().equals(target.getUniqueId()))
+                        .findFirst()
+                        .orElse(null);
+                String blacklisterName = blacklistedPlayer != null ? blacklistedPlayer.getBlacklistedByName()
+                        : "Unknown";
                 messageManager.sendMessage(inviter, "player_is_blacklisted",
-                    Placeholder.unparsed("target", target.getName()),
-                    Placeholder.unparsed("blacklister", blacklisterName));
+                        Placeholder.unparsed("target", target.getName()),
+                        Placeholder.unparsed("blacklister", blacklisterName));
                 EffectsUtil.playSound(inviter, EffectsUtil.SoundType.ERROR);
                 return;
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("Could not check blacklist status for player " + target.getName() + " being invited to team " + team.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning("Could not check blacklist status for player " + target.getName()
+                    + " being invited to team " + team.getName() + ": " + e.getMessage());
         }
         List<String> invites = teamInvites.getIfPresent(target.getUniqueId());
         if (invites != null && invites.contains(team.getName().toLowerCase())) {
@@ -665,8 +807,9 @@ public class TeamManager {
         invites.add(team.getName().toLowerCase());
         teamInvites.put(target.getUniqueId(), invites);
         messageManager.sendMessage(inviter, "invite_sent", Placeholder.unparsed("target", target.getName()));
-        messageManager.sendRawMessage(target, messageManager.getRawMessage("prefix") + messageManager.getRawMessage("invite_received")
-                .replace("<team>", team.getName()));
+        messageManager.sendRawMessage(target,
+                messageManager.getRawMessage("prefix") + messageManager.getRawMessage("invite_received")
+                        .replace("<team>", team.getName()));
         EffectsUtil.playSound(inviter, EffectsUtil.SoundType.SUCCESS);
         EffectsUtil.playSound(target, EffectsUtil.SoundType.SUCCESS);
     }
@@ -693,37 +836,39 @@ public class TeamManager {
             EffectsUtil.playSound(inviter, EffectsUtil.SoundType.ERROR);
             return;
         }
-        
+
         plugin.getTaskRunner().runAsync(() -> {
             try {
                 Optional<Team> existingTeam = storage.findTeamByPlayer(targetUuid);
                 if (existingTeam.isPresent()) {
                     plugin.getTaskRunner().runOnEntity(inviter, () -> {
-                        messageManager.sendMessage(inviter, "target_already_in_team", 
-                            Placeholder.unparsed("target", targetName));
+                        messageManager.sendMessage(inviter, "target_already_in_team",
+                                Placeholder.unparsed("target", targetName));
                         EffectsUtil.playSound(inviter, EffectsUtil.SoundType.ERROR);
                     });
                     return;
                 }
-                
+
                 if (storage.isPlayerBlacklisted(team.getId(), targetUuid)) {
                     List<BlacklistedPlayer> blacklist = storage.getTeamBlacklist(team.getId());
                     BlacklistedPlayer blacklistedPlayer = blacklist.stream()
-                        .filter(bp -> bp != null && bp.getPlayerUuid() != null && bp.getPlayerUuid().equals(targetUuid))
-                        .findFirst()
-                        .orElse(null);
-                    String blacklisterName = blacklistedPlayer != null ? blacklistedPlayer.getBlacklistedByName() : "Unknown";
+                            .filter(bp -> bp != null && bp.getPlayerUuid() != null
+                                    && bp.getPlayerUuid().equals(targetUuid))
+                            .findFirst()
+                            .orElse(null);
+                    String blacklisterName = blacklistedPlayer != null ? blacklistedPlayer.getBlacklistedByName()
+                            : "Unknown";
                     plugin.getTaskRunner().runOnEntity(inviter, () -> {
                         messageManager.sendMessage(inviter, "player_is_blacklisted",
-                            Placeholder.unparsed("target", targetName),
-                            Placeholder.unparsed("blacklister", blacklisterName));
+                                Placeholder.unparsed("target", targetName),
+                                Placeholder.unparsed("blacklister", blacklisterName));
                         EffectsUtil.playSound(inviter, EffectsUtil.SoundType.ERROR);
                     });
                     return;
                 }
-                
+
                 storage.addTeamInvite(team.getId(), targetUuid, inviter.getUniqueId());
-                
+
                 plugin.getTaskRunner().runOnEntity(inviter, () -> {
                     List<String> invites = teamInvites.getIfPresent(targetUuid);
                     if (invites == null) {
@@ -733,10 +878,10 @@ public class TeamManager {
                         invites.add(team.getName().toLowerCase());
                         teamInvites.put(targetUuid, invites);
                     }
-                    
+
                     messageManager.sendMessage(inviter, "invite_sent", Placeholder.unparsed("target", targetName));
                     EffectsUtil.playSound(inviter, EffectsUtil.SoundType.SUCCESS);
-                    
+
                     publishCrossServerUpdate(team.getId(), "PLAYER_INVITED", targetUuid.toString(), team.getName());
                 });
             } catch (Exception e) {
@@ -748,7 +893,7 @@ public class TeamManager {
             }
         });
     }
-    
+
     public void acceptInvite(Player player, String teamName) {
         if (getPlayerTeam(player.getUniqueId()) != null) {
             messageManager.sendMessage(player, "already_in_team");
@@ -774,22 +919,25 @@ public class TeamManager {
                     EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
                     return;
                 }
-                            try {
-                if (storage.isPlayerBlacklisted(team.getId(), player.getUniqueId())) {
-                    List<BlacklistedPlayer> blacklist = storage.getTeamBlacklist(team.getId());
+                try {
+                    if (storage.isPlayerBlacklisted(team.getId(), player.getUniqueId())) {
+                        List<BlacklistedPlayer> blacklist = storage.getTeamBlacklist(team.getId());
                         BlacklistedPlayer blacklistedPlayer = blacklist.stream()
-                            .filter(bp -> bp != null && bp.getPlayerUuid() != null && bp.getPlayerUuid().equals(player.getUniqueId()))
-                            .findFirst()
-                            .orElse(null);
-                        String blacklisterName = blacklistedPlayer != null ? blacklistedPlayer.getBlacklistedByName() : "Unknown";
+                                .filter(bp -> bp != null && bp.getPlayerUuid() != null
+                                        && bp.getPlayerUuid().equals(player.getUniqueId()))
+                                .findFirst()
+                                .orElse(null);
+                        String blacklisterName = blacklistedPlayer != null ? blacklistedPlayer.getBlacklistedByName()
+                                : "Unknown";
                         messageManager.sendMessage(player, "player_is_blacklisted",
-                            Placeholder.unparsed("target", player.getName()),
-                            Placeholder.unparsed("blacklister", blacklisterName));
+                                Placeholder.unparsed("target", player.getName()),
+                                Placeholder.unparsed("blacklister", blacklisterName));
                         EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
                         return;
                     }
                 } catch (Exception e) {
-                    plugin.getLogger().warning("Could not check blacklist status for player " + player.getName() + " accepting invite to team " + team.getName() + ": " + e.getMessage());
+                    plugin.getLogger().warning("Could not check blacklist status for player " + player.getName()
+                            + " accepting invite to team " + team.getName() + ": " + e.getMessage());
                 }
                 invites.remove(teamName.toLowerCase());
                 if (invites.isEmpty()) {
@@ -798,22 +946,28 @@ public class TeamManager {
                 plugin.getTaskRunner().runAsync(() -> {
                     storage.addMemberToTeam(team.getId(), player.getUniqueId());
                     storage.clearAllJoinRequests(player.getUniqueId());
-                    
-                    publishCrossServerUpdate(team.getId(), "MEMBER_JOINED", player.getUniqueId().toString(), player.getName());
-                    
+
+                    publishCrossServerUpdate(team.getId(), "MEMBER_JOINED", player.getUniqueId().toString(),
+                            player.getName());
+
                     plugin.getTaskRunner().runOnEntity(player, () -> {
-                        team.addMember(new TeamPlayer(player.getUniqueId(), TeamRole.MEMBER, Instant.now(), false, true, false, true));
+                        team.addMember(new TeamPlayer(player.getUniqueId(), TeamRole.MEMBER, Instant.now(), false, true,
+                                false, true));
                         playerTeamCache.put(player.getUniqueId(), team);
-                        messageManager.sendMessage(player, "invite_accepted", Placeholder.unparsed("team", team.getName()));
+                        messageManager.sendMessage(player, "invite_accepted",
+                                Placeholder.unparsed("team", team.getName()));
                         team.broadcast("invite_accepted_broadcast", Placeholder.unparsed("player", player.getName()));
                         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
-                        
+
+                        plugin.getGlowManager().refreshGlow(player);
+
                         plugin.getWebhookHelper().sendPlayerJoinWebhook(player, team);
                     });
                 });
             });
         });
     }
+
     public void denyInvite(Player player, String teamName) {
         List<String> invites = teamInvites.getIfPresent(player.getUniqueId());
         if (invites == null || !invites.contains(teamName.toLowerCase())) {
@@ -832,11 +986,13 @@ public class TeamManager {
             team.getMembers().stream()
                     .filter(member -> team.hasElevatedPermissions(member.getPlayerUuid()) && member.isOnline())
                     .forEach(privilegedMember -> {
-                        messageManager.sendMessage(privilegedMember.getBukkitPlayer(), "invite_denied_broadcast", Placeholder.unparsed("player", player.getName()));
+                        messageManager.sendMessage(privilegedMember.getBukkitPlayer(), "invite_denied_broadcast",
+                                Placeholder.unparsed("player", player.getName()));
                         EffectsUtil.playSound(privilegedMember.getBukkitPlayer(), EffectsUtil.SoundType.ERROR);
                     });
         }
     }
+
     public List<Team> getPendingInvites(UUID playerUuid) {
         List<String> inviteNames = teamInvites.getIfPresent(playerUuid);
         if (inviteNames == null || inviteNames.isEmpty()) {
@@ -847,6 +1003,7 @@ public class TeamManager {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
+
     public void leaveTeam(Player player) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -861,14 +1018,15 @@ public class TeamManager {
         }
         plugin.getTaskRunner().runAsync(() -> {
             storage.removeMemberFromTeam(player.getUniqueId());
-            
+
             publishCrossServerUpdate(team.getId(), "MEMBER_LEFT", player.getUniqueId().toString(), player.getName());
-            
+
             plugin.getWebhookHelper().sendPlayerLeaveWebhook(player.getName(), team);
-            
+
             plugin.getTaskRunner().runOnEntity(player, () -> {
                 team.removeMember(player.getUniqueId());
                 playerTeamCache.remove(player.getUniqueId());
+                plugin.getGlowManager().stopGlowForPlayer(player, team);
                 messageManager.sendMessage(player, "you_left_team", Placeholder.unparsed("team", team.getName()));
                 team.broadcast("player_left_broadcast", Placeholder.unparsed("player", player.getName()));
                 EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
@@ -876,6 +1034,7 @@ public class TeamManager {
             });
         });
     }
+
     public void kickPlayer(Player kicker, UUID targetUuid) {
         Team team = getPlayerTeam(kicker.getUniqueId());
         if (team == null) {
@@ -892,7 +1051,8 @@ public class TeamManager {
         String targetName = Bukkit.getOfflinePlayer(targetUuid).getName();
         String safeTargetName = targetName != null ? targetName : "Unknown";
         if (targetMember == null) {
-            messageManager.sendMessage(kicker, "target_not_in_your_team", Placeholder.unparsed("target", safeTargetName));
+            messageManager.sendMessage(kicker, "target_not_in_your_team",
+                    Placeholder.unparsed("target", safeTargetName));
             EffectsUtil.playSound(kicker, EffectsUtil.SoundType.ERROR);
             return;
         }
@@ -910,20 +1070,23 @@ public class TeamManager {
             if (confirmed) {
                 plugin.getTaskRunner().runAsync(() -> {
                     storage.removeMemberFromTeam(targetUuid);
-                    
+
                     publishCrossServerUpdate(team.getId(), "MEMBER_KICKED", targetUuid.toString(), safeTargetName);
-                    
+
                     plugin.getWebhookHelper().sendPlayerKickWebhook(safeTargetName, kicker.getName(), team);
-                    
+
                     plugin.getTaskRunner().run(() -> {
                         team.removeMember(targetUuid);
                         playerTeamCache.remove(targetUuid);
-                        messageManager.sendMessage(kicker, "player_kicked", Placeholder.unparsed("target", safeTargetName));
+                        messageManager.sendMessage(kicker, "player_kicked",
+                                Placeholder.unparsed("target", safeTargetName));
                         team.broadcast("player_left_broadcast", Placeholder.unparsed("player", safeTargetName));
                         EffectsUtil.playSound(kicker, EffectsUtil.SoundType.SUCCESS);
                         Player targetPlayer = Bukkit.getPlayer(targetUuid);
                         if (targetPlayer != null) {
-                            messageManager.sendMessage(targetPlayer, "you_were_kicked", Placeholder.unparsed("team", team.getName()));
+                            plugin.getGlowManager().stopGlowForPlayer(targetPlayer, team);
+                            messageManager.sendMessage(targetPlayer, "you_were_kicked",
+                                    Placeholder.unparsed("team", team.getName()));
                             EffectsUtil.playSound(targetPlayer, EffectsUtil.SoundType.ERROR);
                         }
                     });
@@ -933,6 +1096,7 @@ public class TeamManager {
             }
         }).open();
     }
+
     public void kickPlayerDirect(Player kicker, UUID targetUuid) {
         Team team = getPlayerTeam(kicker.getUniqueId());
         if (team == null) {
@@ -955,13 +1119,13 @@ public class TeamManager {
             try {
                 if (team.isMember(targetUuid)) {
                     storage.removeMemberFromTeam(targetUuid);
-                    
+
                     String targetName = Bukkit.getOfflinePlayer(targetUuid).getName();
                     String safeTargetName = targetName != null ? targetName : "Unknown";
                     publishCrossServerUpdate(team.getId(), "MEMBER_KICKED", targetUuid.toString(), safeTargetName);
-                    
+
                     plugin.getWebhookHelper().sendPlayerKickWebhook(safeTargetName, kicker.getName(), team);
-                    
+
                     plugin.getTaskRunner().run(() -> {
                         try {
                             if (team.isMember(targetUuid)) {
@@ -970,7 +1134,8 @@ public class TeamManager {
                                 team.broadcast("player_left_broadcast", Placeholder.unparsed("player", safeTargetName));
                                 Player targetPlayer = Bukkit.getPlayer(targetUuid);
                                 if (targetPlayer != null) {
-                                    messageManager.sendMessage(targetPlayer, "you_were_kicked", Placeholder.unparsed("team", team.getName()));
+                                    messageManager.sendMessage(targetPlayer, "you_were_kicked",
+                                            Placeholder.unparsed("team", team.getName()));
                                     EffectsUtil.playSound(targetPlayer, EffectsUtil.SoundType.ERROR);
                                 }
                             }
@@ -984,6 +1149,7 @@ public class TeamManager {
             }
         });
     }
+
     public void promotePlayer(Player promoter, UUID targetUuid) {
         Team team = getPlayerTeam(promoter.getUniqueId());
         if (team == null || !team.isOwner(promoter.getUniqueId())) {
@@ -995,7 +1161,8 @@ public class TeamManager {
         String targetName = Bukkit.getOfflinePlayer(targetUuid).getName();
         String safeTargetName = targetName != null ? targetName : "Unknown";
         if (target == null) {
-            messageManager.sendMessage(promoter, "target_not_in_your_team", Placeholder.unparsed("target", safeTargetName));
+            messageManager.sendMessage(promoter, "target_not_in_your_team",
+                    Placeholder.unparsed("target", safeTargetName));
             return;
         }
         if (target.getRole() == TeamRole.CO_OWNER) {
@@ -1015,12 +1182,14 @@ public class TeamManager {
             storage.updateMemberRole(team.getId(), targetUuid, TeamRole.CO_OWNER);
             storage.updateMemberPermissions(team.getId(), targetUuid, true, true, true, true);
             storage.updateMemberEditingPermissions(team.getId(), targetUuid, true, false, true, false, false);
-            plugin.getLogger().info("Successfully promoted " + targetUuid + " in team " + team.getName() + " with updated permissions");
+            plugin.getLogger().info(
+                    "Successfully promoted " + targetUuid + " in team " + team.getName() + " with updated permissions");
             markTeamModified(team.getId());
-            
-                    publishCrossServerUpdate(team.getId(), "MEMBER_PROMOTED", targetUuid.toString(), safeTargetName);
-            
-            plugin.getWebhookHelper().sendPlayerPromoteWebhook(safeTargetName, promoter.getName(), team, TeamRole.MEMBER, TeamRole.CO_OWNER);
+
+            publishCrossServerUpdate(team.getId(), "MEMBER_PROMOTED", targetUuid.toString(), safeTargetName);
+
+            plugin.getWebhookHelper().sendPlayerPromoteWebhook(safeTargetName, promoter.getName(), team,
+                    TeamRole.MEMBER, TeamRole.CO_OWNER);
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to update member permissions in database: " + e.getMessage());
             target.setRole(TeamRole.MEMBER);
@@ -1032,7 +1201,12 @@ public class TeamManager {
         }
         team.broadcast("player_promoted", Placeholder.unparsed("target", safeTargetName));
         EffectsUtil.playSound(promoter, EffectsUtil.SoundType.SUCCESS);
+        Player targetPlayer = Bukkit.getPlayer(targetUuid);
+        if (targetPlayer != null) {
+            plugin.getGlowManager().refreshGlow(targetPlayer);
+        }
     }
+
     public void demotePlayer(Player demoter, UUID targetUuid) {
         Team team = getPlayerTeam(demoter.getUniqueId());
         if (team == null || !team.isOwner(demoter.getUniqueId())) {
@@ -1044,7 +1218,8 @@ public class TeamManager {
         String targetName = Bukkit.getOfflinePlayer(targetUuid).getName();
         String safeTargetName = targetName != null ? targetName : "Unknown";
         if (target == null) {
-            messageManager.sendMessage(demoter, "target_not_in_your_team", Placeholder.unparsed("target", safeTargetName));
+            messageManager.sendMessage(demoter, "target_not_in_your_team",
+                    Placeholder.unparsed("target", safeTargetName));
             return;
         }
         if (target.getRole() == TeamRole.MEMBER) {
@@ -1064,12 +1239,14 @@ public class TeamManager {
             storage.updateMemberRole(team.getId(), targetUuid, TeamRole.MEMBER);
             storage.updateMemberPermissions(team.getId(), targetUuid, false, true, false, true);
             storage.updateMemberEditingPermissions(team.getId(), targetUuid, false, false, false, false, false);
-            plugin.getLogger().info("Successfully demoted " + targetUuid + " in team " + team.getName() + " with updated permissions");
+            plugin.getLogger().info(
+                    "Successfully demoted " + targetUuid + " in team " + team.getName() + " with updated permissions");
             markTeamModified(team.getId());
-            
-                    publishCrossServerUpdate(team.getId(), "MEMBER_DEMOTED", targetUuid.toString(), safeTargetName);
-            
-            plugin.getWebhookHelper().sendPlayerDemoteWebhook(safeTargetName, demoter.getName(), team, TeamRole.CO_OWNER, TeamRole.MEMBER);
+
+            publishCrossServerUpdate(team.getId(), "MEMBER_DEMOTED", targetUuid.toString(), safeTargetName);
+
+            plugin.getWebhookHelper().sendPlayerDemoteWebhook(safeTargetName, demoter.getName(), team,
+                    TeamRole.CO_OWNER, TeamRole.MEMBER);
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to update member permissions in database: " + e.getMessage());
             target.setRole(TeamRole.CO_OWNER);
@@ -1081,7 +1258,12 @@ public class TeamManager {
         }
         team.broadcast("player_demoted", Placeholder.unparsed("target", safeTargetName));
         EffectsUtil.playSound(demoter, EffectsUtil.SoundType.SUCCESS);
+        Player targetPlayer = Bukkit.getPlayer(targetUuid);
+        if (targetPlayer != null) {
+            plugin.getGlowManager().refreshGlow(targetPlayer);
+        }
     }
+
     public void setTeamTag(Player player, String newTag) {
         if (!configManager.isTeamTagEnabled()) {
             messageManager.sendMessage(player, "feature_disabled");
@@ -1109,14 +1291,15 @@ public class TeamManager {
         plugin.getTaskRunner().runAsync(() -> storage.setTeamTag(team.getId(), newTag));
         markTeamModified(team.getId());
         messageManager.sendMessage(player, "tag_set", Placeholder.unparsed("tag", newTag));
-        
+
         publishCrossServerUpdate(team.getId(), "TEAM_UPDATED", player.getUniqueId().toString(), "tag_change|" + newTag);
-        
+
         forceTeamSync(team.getId());
         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
-        
+
         refreshPlayerGUIIfOpen(player);
     }
+
     public void setTeamDescription(Player player, String newDescription) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -1128,20 +1311,22 @@ public class TeamManager {
             return;
         }
         if (newDescription.length() > configManager.getMaxDescriptionLength()) {
-            messageManager.sendMessage(player, "description_too_long", Placeholder.unparsed("max_length", String.valueOf(configManager.getMaxDescriptionLength())));
+            messageManager.sendMessage(player, "description_too_long",
+                    Placeholder.unparsed("max_length", String.valueOf(configManager.getMaxDescriptionLength())));
             return;
         }
         team.setDescription(newDescription);
         plugin.getTaskRunner().runAsync(() -> storage.setTeamDescription(team.getId(), newDescription));
         markTeamModified(team.getId());
         messageManager.sendMessage(player, "description_set");
-        
+
         publishCrossServerUpdate(team.getId(), "TEAM_UPDATED", player.getUniqueId().toString(), "description_change");
-        
+
         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
-        
+
         refreshPlayerGUIIfOpen(player);
     }
+
     public void transferOwnership(Player oldOwner, UUID newOwnerUuid) {
         Team team = getPlayerTeam(oldOwner.getUniqueId());
         if (team == null || !team.isOwner(oldOwner.getUniqueId())) {
@@ -1156,7 +1341,8 @@ public class TeamManager {
         }
         if (!team.isMember(newOwnerUuid)) {
             String targetName = Bukkit.getOfflinePlayer(newOwnerUuid).getName();
-            messageManager.sendMessage(oldOwner, "target_not_in_your_team", Placeholder.unparsed("target", targetName != null ? targetName : "Unknown"));
+            messageManager.sendMessage(oldOwner, "target_not_in_your_team",
+                    Placeholder.unparsed("target", targetName != null ? targetName : "Unknown"));
             EffectsUtil.playSound(oldOwner, EffectsUtil.SoundType.ERROR);
             return;
         }
@@ -1164,21 +1350,20 @@ public class TeamManager {
             if (confirmed) {
                 plugin.getTaskRunner().runAsync(() -> {
                     storage.transferOwnership(team.getId(), newOwnerUuid, oldOwner.getUniqueId());
-                    
+
                     String newOwnerName = Bukkit.getOfflinePlayer(newOwnerUuid).getName();
                     String safeNewOwnerName = newOwnerName != null ? newOwnerName : "Unknown";
-                    
+
                     if (plugin.getRedisManager() != null && plugin.getRedisManager().isAvailable()) {
                         plugin.getRedisManager().publishTeamUpdate(
-                            team.getId(), 
-                            "TEAM_UPDATED", 
-                            newOwnerUuid.toString(), 
-                            "ownership_transfer|" + safeNewOwnerName
-                        );
+                                team.getId(),
+                                "TEAM_UPDATED",
+                                newOwnerUuid.toString(),
+                                "ownership_transfer|" + safeNewOwnerName);
                     }
-                    
+
                     plugin.getWebhookHelper().sendOwnershipTransferWebhook(oldOwner.getName(), safeNewOwnerName, team);
-                    
+
                     plugin.getTaskRunner().run(() -> {
                         team.setOwnerUuid(newOwnerUuid);
                         TeamPlayer newOwnerMember = team.getMember(newOwnerUuid);
@@ -1193,7 +1378,8 @@ public class TeamManager {
                         if (oldOwnerMember != null) {
                             oldOwnerMember.setRole(TeamRole.MEMBER);
                         }
-                        messageManager.sendMessage(oldOwner, "transfer_success", Placeholder.unparsed("player", safeNewOwnerName));
+                        messageManager.sendMessage(oldOwner, "transfer_success",
+                                Placeholder.unparsed("player", safeNewOwnerName));
                         team.broadcast("transfer_broadcast",
                                 Placeholder.unparsed("owner", oldOwner.getName()),
                                 Placeholder.unparsed("player", safeNewOwnerName));
@@ -1205,6 +1391,7 @@ public class TeamManager {
             }
         }).open();
     }
+
     public void togglePvp(Player player) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -1217,14 +1404,15 @@ public class TeamManager {
         }
         boolean newStatus = !team.isPvpEnabled();
         team.setPvpEnabled(newStatus);
-        
+
         plugin.getTaskRunner().runAsync(() -> {
             storage.setPvpStatus(team.getId(), newStatus);
             markTeamModified(team.getId());
-            
-                    publishCrossServerUpdate(team.getId(), "TEAM_UPDATED", player.getUniqueId().toString(), "pvp_toggle|" + newStatus);
+
+            publishCrossServerUpdate(team.getId(), "TEAM_UPDATED", player.getUniqueId().toString(),
+                    "pvp_toggle|" + newStatus);
         });
-        
+
         if (newStatus) {
             team.broadcast("team_pvp_enabled");
         } else {
@@ -1232,9 +1420,11 @@ public class TeamManager {
         }
         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
     }
+
     public void togglePvpStatus(Player player) {
         togglePvp(player);
     }
+
     public void setTeamHome(Player player) {
         Team team = getPlayerTeam(player.getUniqueId());
         TeamPlayer member = team != null ? team.getMember(player.getUniqueId()) : null;
@@ -1252,12 +1442,13 @@ public class TeamManager {
         team.setHomeServer(serverName);
         plugin.getTaskRunner().runAsync(() -> storage.setTeamHome(team.getId(), home, serverName));
         markTeamModified(team.getId());
-        
+
         publishCrossServerUpdate(team.getId(), "HOME_SET", player.getUniqueId().toString(), serverName);
-        
+
         messageManager.sendMessage(player, "home_set");
         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
     }
+
     public void deleteTeamHome(Player player) {
         Team team = getPlayerTeam(player.getUniqueId());
         TeamPlayer member = team != null ? team.getMember(player.getUniqueId()) : null;
@@ -1277,12 +1468,13 @@ public class TeamManager {
         team.setHomeServer(null);
         plugin.getTaskRunner().runAsync(() -> storage.deleteTeamHome(team.getId()));
         markTeamModified(team.getId());
-        
+
         publishCrossServerUpdate(team.getId(), "HOME_DELETED", player.getUniqueId().toString(), "");
-        
+
         messageManager.sendMessage(player, "home_deleted");
         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
     }
+
     public void teleportToHome(Player player) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -1307,19 +1499,22 @@ public class TeamManager {
                         Instant cooldownEnd = homeCooldowns.get(player.getUniqueId());
                         if (Instant.now().isBefore(cooldownEnd)) {
                             long secondsLeft = Duration.between(Instant.now(), cooldownEnd).toSeconds();
-                            messageManager.sendMessage(player, "teleport_cooldown", Placeholder.unparsed("time", secondsLeft + "s"));
+                            messageManager.sendMessage(player, "teleport_cooldown",
+                                    Placeholder.unparsed("time", secondsLeft + "s"));
                             return;
                         }
                     }
                 }
                 String currentServer = plugin.getConfigManager().getServerIdentifier();
                 String homeServer = teamHome.serverName();
-                plugin.getDebugLogger().log("Teleport initiated for " + player.getName() + ". Current Server: " + currentServer + ", Home Server: " + homeServer);
+                plugin.getDebugLogger().log("Teleport initiated for " + player.getName() + ". Current Server: "
+                        + currentServer + ", Home Server: " + homeServer);
                 if (currentServer.equalsIgnoreCase(homeServer)) {
                     plugin.getDebugLogger().log("Player is on the correct server. Initiating local teleport.");
                     initiateLocalTeleport(player, teamHome.location());
                 } else {
-                    plugin.getDebugLogger().log("Player is on the wrong server. Initiating cross-server teleport via database.");
+                    plugin.getDebugLogger()
+                            .log("Player is on the wrong server. Initiating cross-server teleport via database.");
                     plugin.getTaskRunner().runAsync(() -> {
                         storage.addPendingTeleport(player.getUniqueId(), homeServer, teamHome.location());
                         plugin.getTaskRunner().runOnEntity(player, () -> {
@@ -1331,6 +1526,7 @@ public class TeamManager {
             });
         });
     }
+
     private void initiateLocalTeleport(Player player, Location location) {
         int warmup = configManager.getWarmupSeconds();
         if (warmup <= 0 || player.hasPermission("justteams.bypass.home.cooldown")) {
@@ -1341,28 +1537,34 @@ public class TeamManager {
         Location startLocation = player.getLocation();
         AtomicInteger countdown = new AtomicInteger(warmup);
         CancellableTask task = plugin.getTaskRunner().runEntityTaskTimer(player, () -> {
-            if (!player.isOnline() || !Objects.equals(player.getWorld(), startLocation.getWorld()) || player.getLocation().distanceSquared(startLocation) > 1) {
+            if (!player.isOnline() || !Objects.equals(player.getWorld(), startLocation.getWorld())
+                    || player.getLocation().distanceSquared(startLocation) > 1) {
                 if (player.isOnline()) {
                     messageManager.sendMessage(player, "teleport_moved");
                     EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
                 }
                 CancellableTask runningTask = teleportTasks.remove(player.getUniqueId());
-                if (runningTask != null) runningTask.cancel();
+                if (runningTask != null)
+                    runningTask.cancel();
                 return;
             }
             if (countdown.get() > 0) {
-                messageManager.sendMessage(player, "teleport_warmup", Placeholder.unparsed("seconds", String.valueOf(countdown.get())));
-                EffectsUtil.spawnParticles(player.getLocation().add(0, 1, 0), Particle.valueOf(configManager.getWarmupParticle()), 10);
+                messageManager.sendMessage(player, "teleport_warmup",
+                        Placeholder.unparsed("seconds", String.valueOf(countdown.get())));
+                EffectsUtil.spawnParticles(player.getLocation().add(0, 1, 0),
+                        Particle.valueOf(configManager.getWarmupParticle()), 10);
                 countdown.decrementAndGet();
             } else {
                 teleportPlayer(player, location);
                 setCooldown(player);
                 CancellableTask runningTask = teleportTasks.remove(player.getUniqueId());
-                if (runningTask != null) runningTask.cancel();
+                if (runningTask != null)
+                    runningTask.cancel();
             }
         }, 0L, 20L);
         teleportTasks.put(player.getUniqueId(), task);
     }
+
     public void teleportPlayer(Player player, Location location) {
         plugin.getDebugLogger().log("Executing final teleport for " + player.getName() + " to " + location);
         plugin.getTaskRunner().runAtLocation(location, () -> {
@@ -1370,7 +1572,8 @@ public class TeamManager {
                 if (success) {
                     messageManager.sendMessage(player, "teleport_success");
                     EffectsUtil.playSound(player, EffectsUtil.SoundType.TELEPORT);
-                    EffectsUtil.spawnParticles(player.getLocation(), Particle.valueOf(configManager.getSuccessParticle()), 30);
+                    EffectsUtil.spawnParticles(player.getLocation(),
+                            Particle.valueOf(configManager.getSuccessParticle()), 30);
                 } else {
                     messageManager.sendMessage(player, "teleport_moved");
                     EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
@@ -1378,6 +1581,7 @@ public class TeamManager {
             });
         });
     }
+
     private void setCooldown(Player player) {
         if (player.hasPermission("justteams.bypass.home.cooldown")) {
             return;
@@ -1387,6 +1591,7 @@ public class TeamManager {
             homeCooldowns.put(player.getUniqueId(), Instant.now().plusSeconds(cooldownSeconds));
         }
     }
+
     private void startWarpTeleportWarmup(Player player, Location location) {
         int warmup = 5;
         if (warmup <= 0 || player.hasPermission("justteams.bypass.warp.cooldown")) {
@@ -1397,28 +1602,34 @@ public class TeamManager {
         Location startLocation = player.getLocation();
         AtomicInteger countdown = new AtomicInteger(warmup);
         CancellableTask task = plugin.getTaskRunner().runEntityTaskTimer(player, () -> {
-            if (!player.isOnline() || !Objects.equals(player.getWorld(), startLocation.getWorld()) || player.getLocation().distanceSquared(startLocation) > 1) {
+            if (!player.isOnline() || !Objects.equals(player.getWorld(), startLocation.getWorld())
+                    || player.getLocation().distanceSquared(startLocation) > 1) {
                 if (player.isOnline()) {
                     messageManager.sendMessage(player, "teleport_moved");
                     EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
                 }
                 CancellableTask runningTask = teleportTasks.remove(player.getUniqueId());
-                if (runningTask != null) runningTask.cancel();
+                if (runningTask != null)
+                    runningTask.cancel();
                 return;
             }
             if (countdown.get() > 0) {
-                messageManager.sendMessage(player, "teleport_warmup", Placeholder.unparsed("seconds", String.valueOf(countdown.get())));
-                EffectsUtil.spawnParticles(player.getLocation().add(0, 1, 0), Particle.valueOf(configManager.getWarmupParticle()), 10);
+                messageManager.sendMessage(player, "teleport_warmup",
+                        Placeholder.unparsed("seconds", String.valueOf(countdown.get())));
+                EffectsUtil.spawnParticles(player.getLocation().add(0, 1, 0),
+                        Particle.valueOf(configManager.getWarmupParticle()), 10);
                 countdown.decrementAndGet();
             } else {
                 teleportPlayer(player, location);
                 setWarpCooldown(player);
                 CancellableTask runningTask = teleportTasks.remove(player.getUniqueId());
-                if (runningTask != null) runningTask.cancel();
+                if (runningTask != null)
+                    runningTask.cancel();
             }
         }, 0L, 20L);
         teleportTasks.put(player.getUniqueId(), task);
     }
+
     private void setWarpCooldown(Player player) {
         if (player.hasPermission("justteams.bypass.warp.cooldown")) {
             return;
@@ -1428,6 +1639,7 @@ public class TeamManager {
             warpCooldowns.put(player.getUniqueId(), Instant.now().plusSeconds(cooldownSeconds));
         }
     }
+
     public void deposit(Player player, double amount) {
         if (!configManager.isBankEnabled()) {
             messageManager.sendMessage(player, "feature_disabled");
@@ -1454,16 +1666,17 @@ public class TeamManager {
         team.addBalance(amount);
         plugin.getTaskRunner().runAsync(() -> storage.updateTeamBalance(team.getId(), team.getBalance()));
         markTeamModified(team.getId());
-        
+
         publishCrossServerUpdate(team.getId(), "BANK_DEPOSIT", player.getUniqueId().toString(), String.valueOf(amount));
-        
+
         String formattedAmount = formatCurrency(amount);
         String formattedBalance = formatCurrency(team.getBalance());
         messageManager.sendMessage(player, "bank_deposit_success",
-            Placeholder.unparsed("amount", formattedAmount),
-            Placeholder.unparsed("balance", formattedBalance));
+                Placeholder.unparsed("amount", formattedAmount),
+                Placeholder.unparsed("balance", formattedBalance));
         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
     }
+
     public void withdraw(Player player, double amount) {
         if (!configManager.isBankEnabled()) {
             messageManager.sendMessage(player, "feature_disabled");
@@ -1495,23 +1708,25 @@ public class TeamManager {
         plugin.getEconomy().depositPlayer(player, amount);
         plugin.getTaskRunner().runAsync(() -> storage.updateTeamBalance(team.getId(), team.getBalance()));
         markTeamModified(team.getId());
-        
-        publishCrossServerUpdate(team.getId(), "BANK_WITHDRAW", player.getUniqueId().toString(), String.valueOf(amount));
-        
+
+        publishCrossServerUpdate(team.getId(), "BANK_WITHDRAW", player.getUniqueId().toString(),
+                String.valueOf(amount));
+
         String formattedAmount = formatCurrency(amount);
         String formattedBalance = formatCurrency(team.getBalance());
         messageManager.sendMessage(player, "bank_withdraw_success",
-            Placeholder.unparsed("amount", formattedAmount),
-            Placeholder.unparsed("balance", formattedBalance));
+                Placeholder.unparsed("amount", formattedAmount),
+                Placeholder.unparsed("balance", formattedBalance));
         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
     }
+
     public void openEnderChest(Player player) {
         if (!plugin.getConfigManager().isTeamEnderchestEnabled()) {
             messageManager.sendMessage(player, "feature_disabled");
             EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
             return;
         }
-        
+
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
             messageManager.sendMessage(player, "not_in_team");
@@ -1519,7 +1734,8 @@ public class TeamManager {
             return;
         }
         TeamPlayer member = team.getMember(player.getUniqueId());
-        if (member == null || (!member.canUseEnderChest() && !player.hasPermission("justteams.bypass.enderchest.use"))) {
+        if (member == null
+                || (!member.canUseEnderChest() && !player.hasPermission("justteams.bypass.enderchest.use"))) {
             messageManager.sendMessage(player, "no_permission");
             EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
             return;
@@ -1529,7 +1745,8 @@ public class TeamManager {
         } else {
             if (team.tryLockEnderChest()) {
                 plugin.getTaskRunner().runAsync(() -> {
-                    boolean lockAcquired = storage.acquireEnderChestLock(team.getId(), configManager.getServerIdentifier());
+                    boolean lockAcquired = storage.acquireEnderChestLock(team.getId(),
+                            configManager.getServerIdentifier());
                     plugin.getTaskRunner().runOnEntity(player, () -> {
                         if (lockAcquired) {
                             loadAndOpenEnderChest(player, team);
@@ -1546,11 +1763,13 @@ public class TeamManager {
             }
         }
     }
+
     private void loadAndOpenEnderChest(Player player, Team team) {
         plugin.getTaskRunner().runAsync(() -> {
             String data = storage.getEnderChest(team.getId());
             if (plugin.getConfigManager().isDebugEnabled()) {
-                plugin.getLogger().info("Loaded enderchest data for team " + team.getName() + ": " + (data != null ? "data length: " + data.length() : "null"));
+                plugin.getLogger().info("Loaded enderchest data for team " + team.getName() + ": "
+                        + (data != null ? "data length: " + data.length() : "null"));
             }
             plugin.getTaskRunner().runOnEntity(player, () -> {
                 int rows = configManager.getEnderChestRows();
@@ -1562,7 +1781,8 @@ public class TeamManager {
                             plugin.getLogger().info("Successfully deserialized enderchest for team " + team.getName());
                         }
                     } catch (IOException e) {
-                        plugin.getLogger().warning("Could not deserialize ender chest for team " + team.getName() + ": " + e.getMessage());
+                        plugin.getLogger().warning(
+                                "Could not deserialize ender chest for team " + team.getName() + ": " + e.getMessage());
                     }
                 }
                 team.setEnderChest(enderChest);
@@ -1575,17 +1795,19 @@ public class TeamManager {
             });
         });
     }
+
     private void loadAndOpenEnderChestDirect(Player player, Team team) {
         if (!team.tryLockEnderChest()) {
             messageManager.sendMessage(player, "enderchest_locked_by_proxy");
             EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
             return;
         }
-        
+
         plugin.getTaskRunner().runAsync(() -> {
             String data = storage.getEnderChest(team.getId());
             if (plugin.getConfigManager().isDebugEnabled()) {
-                plugin.getLogger().info("Loading enderchest directly for team " + team.getName() + " (single-server mode)");
+                plugin.getLogger()
+                        .info("Loading enderchest directly for team " + team.getName() + " (single-server mode)");
             }
             plugin.getTaskRunner().runOnEntity(player, () -> {
                 int rows = configManager.getEnderChestRows();
@@ -1597,17 +1819,21 @@ public class TeamManager {
                             plugin.getLogger().info("Successfully deserialized enderchest for team " + team.getName());
                         }
                     } catch (IOException e) {
-                        plugin.getLogger().warning("Could not deserialize ender chest for team " + team.getName() + ": " + e.getMessage());
+                        plugin.getLogger().warning(
+                                "Could not deserialize ender chest for team " + team.getName() + ": " + e.getMessage());
                     }
                 }
                 team.setEnderChest(enderChest);
                 if (plugin.getConfigManager().isDebugEnabled()) {
-                    plugin.getLogger().info("Opening enderchest inventory for player " + player.getName() + " (single-server mode)");
+                    plugin.getLogger().info(
+                            "Opening enderchest inventory for player " + player.getName() + " (single-server mode)");
                 }
 
                 if (player.hasPermission("justteams.admin.enderchest")) {
-                    plugin.getLogger().info("Admin " + player.getName() + " successfully accessed enderchest for team: " + team.getName());
-                    messageManager.sendMessage(player, "admin_opened_enderchest", Placeholder.unparsed("team_name", team.getName()));
+                    plugin.getLogger().info("Admin " + player.getName() + " successfully accessed enderchest for team: "
+                            + team.getName());
+                    messageManager.sendMessage(player, "admin_opened_enderchest",
+                            Placeholder.unparsed("team_name", team.getName()));
                 }
 
                 player.openInventory(team.getEnderChest());
@@ -1616,81 +1842,109 @@ public class TeamManager {
             });
         });
     }
+
     public void saveEnderChest(Team team) {
-        if (team == null || team.getEnderChest() == null) return;
-        
+        if (team == null || team.getEnderChest() == null)
+            return;
+
         if (!team.isEnderChestLocked()) {
             if (plugin.getConfigManager().isDebugEnabled()) {
-                plugin.getLogger().warning("Attempted to save enderchest for team " + team.getName() + " without holding lock!");
+                plugin.getLogger()
+                        .warning("Attempted to save enderchest for team " + team.getName() + " without holding lock!");
             }
             return;
         }
-        
+
         try {
             String data = InventoryUtil.serializeInventory(team.getEnderChest());
             storage.saveEnderChest(team.getId(), data);
-            
+
             if (isCrossServerEnabled()) {
                 sendCrossServerEnderChestUpdate(team.getId(), data);
             }
-            
+
             if (plugin.getConfigManager().isDebugEnabled()) {
-                plugin.getLogger().info("✓ Saved enderchest for team " + team.getName() + " (data length: " + data.length() + ")");
+                plugin.getLogger().info(
+                        "✓ Saved enderchest for team " + team.getName() + " (data length: " + data.length() + ")");
             }
         } catch (Exception e) {
             plugin.getLogger().severe("Could not save ender chest for team " + team.getName() + ": " + e.getMessage());
             e.printStackTrace();
         }
     }
-    
+
     public void saveAndReleaseEnderChest(Team team) {
-        if (team == null || team.getEnderChest() == null) return;
-        
+        if (team == null || team.getEnderChest() == null)
+            return;
+
         if (!team.isEnderChestLocked()) {
             if (plugin.getConfigManager().isDebugEnabled()) {
-                plugin.getLogger().warning("Attempted to save enderchest for team " + team.getName() + " without holding lock!");
+                plugin.getLogger()
+                        .warning("Attempted to save enderchest for team " + team.getName() + " without holding lock!");
             }
             return;
         }
-        
+
         try {
             String data = InventoryUtil.serializeInventory(team.getEnderChest());
-            storage.saveEnderChest(team.getId(), data);
-            storage.releaseEnderChestLock(team.getId());
-            
+            try {
+                storage.saveEnderChest(team.getId(), data);
+            } catch (Exception e) {
+                plugin.getLogger()
+                        .severe("Could not save ender chest for team " + team.getName() + ": " + e.getMessage());
+                e.printStackTrace();
+            }
+
+            try {
+                storage.releaseEnderChestLock(team.getId());
+            } catch (Exception e) {
+                plugin.getLogger().warning(
+                        "Failed to release ender chest lock for team " + team.getName() + ": " + e.getMessage());
+            }
+
             if (isCrossServerEnabled()) {
                 sendCrossServerEnderChestUpdate(team.getId(), data);
             }
-            
+
             if (plugin.getConfigManager().isDebugEnabled()) {
-                plugin.getLogger().info("✓ Saved and released enderchest for team " + team.getName() + " (data length: " + data.length() + ")");
+                plugin.getLogger().info("✓ Saved and released enderchest for team " + team.getName() + " (data length: "
+                        + data.length() + ")");
             }
         } catch (Exception e) {
-            plugin.getLogger().severe("Could not save ender chest for team " + team.getName() + ": " + e.getMessage());
+            plugin.getLogger()
+                    .severe("Detailed error saving ender chest for team " + team.getName() + ": " + e.getMessage());
             e.printStackTrace();
         } finally {
             team.unlockEnderChest();
         }
     }
+
     public void saveAllOnlineTeamEnderChests() {
         teamNameCache.values().forEach(this::saveEnderChest);
     }
+
     public boolean isCrossServerEnabled() {
         return plugin.getConfigManager().isCrossServerSyncEnabled() && !plugin.getConfigManager().isSingleServerMode();
     }
+
     public void sendCrossServerEnderChestUpdate(int teamId, String enderChestData) {
-        if (!isCrossServerEnabled()) return;
+        if (!isCrossServerEnabled())
+            return;
         plugin.getTaskRunner().runAsync(() -> {
             try {
                 publishCrossServerUpdate(teamId, "ENDERCHEST_UPDATED", "", enderChestData);
-                plugin.getLogger().info("✓ Published cross-server enderchest update for team " + teamId + " (data length: " + enderChestData.length() + ")");
+                plugin.getLogger().info("✓ Published cross-server enderchest update for team " + teamId
+                        + " (data length: " + enderChestData.length() + ")");
             } catch (Exception e) {
-                plugin.getLogger().warning("Failed to send cross-server enderchest update for team " + teamId + ": " + e.getMessage());
+                plugin.getLogger().warning(
+                        "Failed to send cross-server enderchest update for team " + teamId + ": " + e.getMessage());
             }
         });
     }
+
     public void refreshEnderChestInventory(Team team) {
-        if (team.getEnderChest() == null || team.getEnderChestViewers().isEmpty()) return;
+        if (team.getEnderChest() == null || team.getEnderChestViewers().isEmpty())
+            return;
         plugin.getTaskRunner().run(() -> {
             for (UUID viewerUuid : team.getEnderChestViewers()) {
                 Player viewer = Bukkit.getPlayer(viewerUuid);
@@ -1701,13 +1955,16 @@ public class TeamManager {
                             viewer.openInventory(team.getEnderChest());
                         });
                     } catch (Exception e) {
-                        plugin.getLogger().warning("Failed to refresh enderchest for viewer " + viewer.getName() + ": " + e.getMessage());
+                        plugin.getLogger().warning(
+                                "Failed to refresh enderchest for viewer " + viewer.getName() + ": " + e.getMessage());
                     }
                 }
             }
         });
     }
-    public void updateMemberPermissions(Player owner, UUID targetUuid, boolean canWithdraw, boolean canUseEnderChest, boolean canSetHome, boolean canUseHome) {
+
+    public void updateMemberPermissions(Player owner, UUID targetUuid, boolean canWithdraw, boolean canUseEnderChest,
+            boolean canSetHome, boolean canUseHome) {
         Team team = getPlayerTeam(owner.getUniqueId());
         if (team == null || !team.isOwner(owner.getUniqueId())) {
             messageManager.sendMessage(owner, "not_owner");
@@ -1722,13 +1979,16 @@ public class TeamManager {
         member.setCanSetHome(canSetHome);
         member.setCanUseHome(canUseHome);
         try {
-            storage.updateMemberPermissions(team.getId(), targetUuid, canWithdraw, canUseEnderChest, canSetHome, canUseHome);
-            plugin.getLogger().info("Successfully updated permissions for " + targetUuid + " in team " + team.getName() +
-                " - canUseEnderChest: " + canUseEnderChest);
+            storage.updateMemberPermissions(team.getId(), targetUuid, canWithdraw, canUseEnderChest, canSetHome,
+                    canUseHome);
+            plugin.getLogger()
+                    .info("Successfully updated permissions for " + targetUuid + " in team " + team.getName() +
+                            " - canUseEnderChest: " + canUseEnderChest);
             markTeamModified(team.getId());
             forceMemberPermissionRefresh(team.getId(), targetUuid);
         } catch (Exception e) {
-            plugin.getLogger().severe("Failed to update permissions in database for " + targetUuid + " in team " + team.getName() + ": " + e.getMessage());
+            plugin.getLogger().severe("Failed to update permissions in database for " + targetUuid + " in team "
+                    + team.getName() + ": " + e.getMessage());
             member.setCanWithdraw(!canWithdraw);
             member.setCanUseEnderChest(!canUseEnderChest);
             member.setCanSetHome(!canSetHome);
@@ -1756,8 +2016,10 @@ public class TeamManager {
         messageManager.sendMessage(owner, "permissions_updated");
         EffectsUtil.playSound(owner, EffectsUtil.SoundType.SUCCESS);
     }
-    public void updateMemberEditingPermissions(Player owner, UUID targetUuid, boolean canEditMembers, boolean canEditCoOwners,
-                                             boolean canKickMembers, boolean canPromoteMembers, boolean canDemoteMembers) {
+
+    public void updateMemberEditingPermissions(Player owner, UUID targetUuid, boolean canEditMembers,
+            boolean canEditCoOwners,
+            boolean canKickMembers, boolean canPromoteMembers, boolean canDemoteMembers) {
         Team team = getPlayerTeam(owner.getUniqueId());
         if (team == null || !team.isOwner(owner.getUniqueId())) {
             messageManager.sendMessage(owner, "not_owner");
@@ -1774,12 +2036,14 @@ public class TeamManager {
         member.setCanDemoteMembers(canDemoteMembers);
         try {
             storage.updateMemberEditingPermissions(team.getId(), targetUuid, canEditMembers, canEditCoOwners,
-                canKickMembers, canPromoteMembers, canDemoteMembers);
-            plugin.getLogger().info("Successfully updated editing permissions for " + targetUuid + " in team " + team.getName());
+                    canKickMembers, canPromoteMembers, canDemoteMembers);
+            plugin.getLogger()
+                    .info("Successfully updated editing permissions for " + targetUuid + " in team " + team.getName());
             markTeamModified(team.getId());
             forceMemberPermissionRefresh(team.getId(), targetUuid);
         } catch (Exception e) {
-            plugin.getLogger().severe("Failed to update editing permissions in database for " + targetUuid + " in team " + team.getName() + ": " + e.getMessage());
+            plugin.getLogger().severe("Failed to update editing permissions in database for " + targetUuid + " in team "
+                    + team.getName() + ": " + e.getMessage());
             member.setCanEditMembers(!canEditMembers);
             member.setCanEditCoOwners(!canEditCoOwners);
             member.setCanKickMembers(!canKickMembers);
@@ -1808,6 +2072,45 @@ public class TeamManager {
         messageManager.sendMessage(owner, "editing_permissions_updated");
         EffectsUtil.playSound(owner, EffectsUtil.SoundType.SUCCESS);
     }
+
+    public void toggleGlow(Player player) {
+        if (!configManager.isTeamGlowEnabled()) {
+            messageManager.sendMessage(player, "feature_disabled");
+            return;
+        }
+        Team team = getPlayerTeam(player.getUniqueId());
+        if (team == null) {
+            messageManager.sendMessage(player, "player_not_in_team");
+            return;
+        }
+        if (!team.hasElevatedPermissions(player.getUniqueId())) {
+            messageManager.sendMessage(player, "must_be_owner_or_co_owner");
+            return;
+        }
+        boolean newStatus = !team.isGlowEnabled();
+        team.setGlowEnabled(newStatus);
+
+        plugin.getTaskRunner().runAsync(() -> {
+            storage.setTeamGlow(team.getId(), newStatus);
+            markTeamModified(team.getId());
+
+            publishCrossServerUpdate(team.getId(), "TEAM_UPDATED", player.getUniqueId().toString(),
+                    "glow_toggle|" + newStatus);
+        });
+
+        plugin.getTaskRunner().runLater(() -> {
+            plugin.getGlowManager().updateGlowForTeam(team);
+        }, 5L);
+        plugin.getGlowManager().updateGlowForTeam(team);
+
+        if (newStatus) {
+            messageManager.sendMessage(player, "team_glow_enabled");
+        } else {
+            messageManager.sendMessage(player, "team_glow_disabled");
+        }
+        EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
+    }
+
     public void togglePublicStatus(Player player) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -1820,14 +2123,15 @@ public class TeamManager {
         }
         boolean newStatus = !team.isPublic();
         team.setPublic(newStatus);
-        
+
         plugin.getTaskRunner().runAsync(() -> {
             storage.setPublicStatus(team.getId(), newStatus);
             markTeamModified(team.getId());
-            
-                    publishCrossServerUpdate(team.getId(), "TEAM_UPDATED", player.getUniqueId().toString(), "public_toggle|" + newStatus);
+
+            publishCrossServerUpdate(team.getId(), "TEAM_UPDATED", player.getUniqueId().toString(),
+                    "public_toggle|" + newStatus);
         });
-        
+
         if (newStatus) {
             messageManager.sendMessage(player, "team_made_public");
         } else {
@@ -1835,6 +2139,7 @@ public class TeamManager {
         }
         EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
     }
+
     public void joinTeam(Player player, String teamName) {
         if (getPlayerTeam(player.getUniqueId()) != null) {
             messageManager.sendMessage(player, "already_in_team");
@@ -1869,18 +2174,21 @@ public class TeamManager {
                 if (storage.isPlayerBlacklisted(team.getId(), player.getUniqueId())) {
                     List<BlacklistedPlayer> blacklist = storage.getTeamBlacklist(team.getId());
                     BlacklistedPlayer blacklistedPlayer = blacklist.stream()
-                        .filter(bp -> bp != null && bp.getPlayerUuid() != null && bp.getPlayerUuid().equals(player.getUniqueId()))
-                        .findFirst()
-                        .orElse(null);
-                    String blacklisterName = blacklistedPlayer != null ? blacklistedPlayer.getBlacklistedByName() : "Unknown";
+                            .filter(bp -> bp != null && bp.getPlayerUuid() != null
+                                    && bp.getPlayerUuid().equals(player.getUniqueId()))
+                            .findFirst()
+                            .orElse(null);
+                    String blacklisterName = blacklistedPlayer != null ? blacklistedPlayer.getBlacklistedByName()
+                            : "Unknown";
                     messageManager.sendMessage(player, "player_is_blacklisted",
-                        Placeholder.unparsed("target", player.getName()),
-                        Placeholder.unparsed("blacklister", blacklisterName));
+                            Placeholder.unparsed("target", player.getName()),
+                            Placeholder.unparsed("blacklister", blacklisterName));
                     EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
                     return;
                 }
             } catch (Exception e) {
-                plugin.getLogger().warning("Could not check blacklist status for player " + player.getName() + " accepting invite to team " + team.getName() + ": " + e.getMessage());
+                plugin.getLogger().warning("Could not check blacklist status for player " + player.getName()
+                        + " accepting invite to team " + team.getName() + ": " + e.getMessage());
             }
             ensureTeamFullyLoaded(team);
             if (team.isMember(player.getUniqueId())) {
@@ -1895,18 +2203,21 @@ public class TeamManager {
             } else {
                 plugin.getTaskRunner().runAsync(() -> {
                     if (storage.hasJoinRequest(team.getId(), player.getUniqueId())) {
-                        plugin.getTaskRunner().runOnEntity(player, () -> messageManager.sendMessage(player, "already_requested_to_join", Placeholder.unparsed("team", team.getName())));
+                        plugin.getTaskRunner().runOnEntity(player, () -> messageManager.sendMessage(player,
+                                "already_requested_to_join", Placeholder.unparsed("team", team.getName())));
                     } else {
                         storage.addJoinRequest(team.getId(), player.getUniqueId());
                         team.addJoinRequest(player.getUniqueId());
                         plugin.getTaskRunner().runOnEntity(player, () -> {
-                            messageManager.sendMessage(player, "join_request_sent", Placeholder.unparsed("team", team.getName()));
+                            messageManager.sendMessage(player, "join_request_sent",
+                                    Placeholder.unparsed("team", team.getName()));
                             team.getMembers().stream()
                                     .filter(m -> m.isOnline())
                                     .forEach(member -> {
                                         Player bukkitPlayer = member.getBukkitPlayer();
                                         if (bukkitPlayer != null) {
-                                            messageManager.sendMessage(bukkitPlayer, "join_request_received", Placeholder.unparsed("player", player.getName()));
+                                            messageManager.sendMessage(bukkitPlayer, "join_request_received",
+                                                    Placeholder.unparsed("player", player.getName()));
                                         }
                                     });
                             joinRequestCooldowns.put(player.getUniqueId(), Instant.now().plusSeconds(60));
@@ -1916,36 +2227,41 @@ public class TeamManager {
             }
         });
     }
+
     private void handlePublicTeamJoin(Player player, Team team) {
         try {
             storage.addMemberToTeam(team.getId(), player.getUniqueId());
             storage.clearAllJoinRequests(player.getUniqueId());
-            
+
             publishCrossServerUpdate(team.getId(), "MEMBER_JOINED", player.getUniqueId().toString(), player.getName());
-            
+
             TeamPlayer newMember = new TeamPlayer(
-                player.getUniqueId(),
-                TeamRole.MEMBER,
-                Instant.now(),
-                false,
-                true,
-                false,
-                true
-            );
+                    player.getUniqueId(),
+                    TeamRole.MEMBER,
+                    Instant.now(),
+                    false,
+                    true,
+                    false,
+                    true);
             team.addMember(newMember);
             playerTeamCache.put(player.getUniqueId(), team);
             refreshTeamMembers(team);
-            messageManager.sendMessage(player, "player_joined_public_team", Placeholder.unparsed("team", team.getName()));
+            messageManager.sendMessage(player, "player_joined_public_team",
+                    Placeholder.unparsed("team", team.getName()));
             team.broadcast("player_joined_team", Placeholder.unparsed("player", player.getName()));
             EffectsUtil.playSound(player, EffectsUtil.SoundType.SUCCESS);
-            
+
+            plugin.getGlowManager().refreshGlow(player);
+
             plugin.getWebhookHelper().sendPlayerJoinWebhook(player, team);
         } catch (Exception e) {
-            plugin.getLogger().severe("Error handling public team join for " + player.getName() + ": " + e.getMessage());
+            plugin.getLogger()
+                    .severe("Error handling public team join for " + player.getName() + ": " + e.getMessage());
             messageManager.sendMessage(player, "team_join_error");
             EffectsUtil.playSound(player, EffectsUtil.SoundType.ERROR);
         }
     }
+
     private void ensureTeamFullyLoaded(Team team) {
         try {
             synchronized (cacheLock) {
@@ -1953,12 +2269,14 @@ public class TeamManager {
                 team.getMembers().clear();
                 team.getMembers().addAll(freshMembers);
                 team.getMembers().forEach(member -> playerTeamCache.put(member.getPlayerUuid(), team));
-                plugin.getLogger().info("Ensured team " + team.getName() + " is fully loaded with " + team.getMembers().size() + " members");
+                plugin.getLogger().info("Ensured team " + team.getName() + " is fully loaded with "
+                        + team.getMembers().size() + " members");
             }
         } catch (Exception e) {
             plugin.getLogger().severe("Error ensuring team " + team.getName() + " is fully loaded: " + e.getMessage());
         }
     }
+
     public void withdrawJoinRequest(Player player, String teamName) {
         plugin.getTaskRunner().runAsync(() -> {
             Optional<Team> teamOpt = storage.findTeamByName(teamName);
@@ -1971,18 +2289,23 @@ public class TeamManager {
                 if (storage.hasJoinRequest(team.getId(), player.getUniqueId())) {
                     storage.removeJoinRequest(team.getId(), player.getUniqueId());
                     team.removeJoinRequest(player.getUniqueId());
-                    messageManager.sendMessage(player, "join_request_withdrawn", Placeholder.unparsed("team", team.getName()));
+                    messageManager.sendMessage(player, "join_request_withdrawn",
+                            Placeholder.unparsed("team", team.getName()));
                 } else {
-                    messageManager.sendMessage(player, "join_request_not_found", Placeholder.unparsed("team", team.getName()));
+                    messageManager.sendMessage(player, "join_request_not_found",
+                            Placeholder.unparsed("team", team.getName()));
                 }
             });
         });
     }
+
     public void acceptJoinRequest(Team team, UUID targetUuid) {
-        if (team == null) return;
+        if (team == null)
+            return;
         Player target = Bukkit.getPlayer(targetUuid);
         if (target == null) {
-            plugin.getLogger().info("Accepting join request for offline player " + targetUuid + " to team " + team.getName());
+            plugin.getLogger()
+                    .info("Accepting join request for offline player " + targetUuid + " to team " + team.getName());
         }
         if (team.isMember(targetUuid)) {
             if (target != null) {
@@ -1999,12 +2322,14 @@ public class TeamManager {
         try {
             if (storage.isPlayerBlacklisted(team.getId(), targetUuid)) {
                 if (target != null) {
-                    messageManager.sendMessage(target, "player_is_blacklisted", Placeholder.unparsed("target", target.getName()));
+                    messageManager.sendMessage(target, "player_is_blacklisted",
+                            Placeholder.unparsed("target", target.getName()));
                 }
                 return;
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("Could not check blacklist status for player " + targetUuid + " accepting join request to team " + team.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning("Could not check blacklist status for player " + targetUuid
+                    + " accepting join request to team " + team.getName() + ": " + e.getMessage());
         }
         storage.removeJoinRequest(team.getId(), targetUuid);
         team.removeJoinRequest(targetUuid);
@@ -2012,7 +2337,8 @@ public class TeamManager {
         TeamPlayer newMember = new TeamPlayer(targetUuid, TeamRole.MEMBER, Instant.now(), false, true, false, true);
         team.addMember(newMember);
         playerTeamCache.put(targetUuid, team);
-        team.broadcast("player_joined_team", Placeholder.unparsed("player", target != null ? target.getName() : "Unknown Player"));
+        team.broadcast("player_joined_team",
+                Placeholder.unparsed("player", target != null ? target.getName() : "Unknown Player"));
         if (target != null) {
             messageManager.sendMessage(target, "joined_team", Placeholder.unparsed("team", team.getName()));
             EffectsUtil.playSound(target, EffectsUtil.SoundType.SUCCESS);
@@ -2021,33 +2347,41 @@ public class TeamManager {
         sendCrossServerTeamUpdate(team.getId(), "MEMBER_ADDED", targetUuid);
         refreshAllTeamMemberGUIs(team);
     }
+
     public void denyJoinRequest(Team team, UUID targetUuid) {
         storage.removeJoinRequest(team.getId(), targetUuid);
         team.removeJoinRequest(targetUuid);
         OfflinePlayer target = Bukkit.getOfflinePlayer(targetUuid);
-        team.broadcast("request_denied_team", Placeholder.unparsed("player", target.getName() != null ? target.getName() : "A player"));
+        team.broadcast("request_denied_team",
+                Placeholder.unparsed("player", target.getName() != null ? target.getName() : "A player"));
         if (target.isOnline()) {
-            messageManager.sendMessage(target.getPlayer(), "request_denied_player", Placeholder.unparsed("team", team.getName()));
+            messageManager.sendMessage(target.getPlayer(), "request_denied_player",
+                    Placeholder.unparsed("team", team.getName()));
         }
     }
+
     private String locationToString(Location location) {
-        if (location == null) return null;
+        if (location == null)
+            return null;
         return String.format("%s,%f,%f,%f,%f,%f",
-            location.getWorld().getName(),
-            location.getX(),
-            location.getY(),
-            location.getZ(),
-            location.getYaw(),
-            location.getPitch()
-        );
+                location.getWorld().getName(),
+                location.getX(),
+                location.getY(),
+                location.getZ(),
+                location.getYaw(),
+                location.getPitch());
     }
+
     private Location stringToLocation(String locationString) {
-        if (locationString == null || locationString.isEmpty()) return null;
+        if (locationString == null || locationString.isEmpty())
+            return null;
         String[] parts = locationString.split(",");
-        if (parts.length != 6) return null;
+        if (parts.length != 6)
+            return null;
         try {
             World world = Bukkit.getWorld(parts[0]);
-            if (world == null) return null;
+            if (world == null)
+                return null;
             double x = Double.parseDouble(parts[1]);
             double y = Double.parseDouble(parts[2]);
             double z = Double.parseDouble(parts[3]);
@@ -2058,6 +2392,7 @@ public class TeamManager {
             return null;
         }
     }
+
     public void setTeamWarp(Player player, String warpName, String password) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -2072,22 +2407,21 @@ public class TeamManager {
             int currentWarps = storage.getTeamWarpCount(team.getId());
             int maxWarps = 5;
             if (currentWarps >= maxWarps && !storage.teamWarpExists(team.getId(), warpName)) {
-                plugin.getTaskRunner().runOnEntity(player, () ->
-                    messageManager.sendMessage(player, "warp_limit_reached", Placeholder.unparsed("limit", String.valueOf(maxWarps)))
-                );
+                plugin.getTaskRunner().runOnEntity(player, () -> messageManager.sendMessage(player,
+                        "warp_limit_reached", Placeholder.unparsed("limit", String.valueOf(maxWarps))));
                 return;
             }
             String serverName = configManager.getServerIdentifier();
             String locationString = locationToString(player.getLocation());
             if (storage.setTeamWarp(team.getId(), warpName, locationString, serverName, password)) {
                 publishCrossServerUpdate(team.getId(), "WARP_CREATED", player.getUniqueId().toString(), warpName);
-                
-                plugin.getTaskRunner().runOnEntity(player, () ->
-                    messageManager.sendMessage(player, "warp_set", Placeholder.unparsed("warp", warpName))
-                );
+
+                plugin.getTaskRunner().runOnEntity(player,
+                        () -> messageManager.sendMessage(player, "warp_set", Placeholder.unparsed("warp", warpName)));
             }
         });
     }
+
     public void deleteTeamWarp(Player player, String warpName) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -2097,29 +2431,26 @@ public class TeamManager {
         plugin.getTaskRunner().runAsync(() -> {
             Optional<IDataStorage.TeamWarp> warpOpt = storage.getTeamWarp(team.getId(), warpName);
             if (warpOpt.isEmpty()) {
-                plugin.getTaskRunner().runOnEntity(player, () ->
-                    messageManager.sendMessage(player, "warp_not_found")
-                );
+                plugin.getTaskRunner().runOnEntity(player, () -> messageManager.sendMessage(player, "warp_not_found"));
                 return;
             }
             IDataStorage.TeamWarp warp = warpOpt.get();
             boolean canDelete = team.hasElevatedPermissions(player.getUniqueId()) ||
-                              warp.name().equals(player.getName());
+                    warp.name().equals(player.getName());
             if (!canDelete) {
-                plugin.getTaskRunner().runOnEntity(player, () ->
-                    messageManager.sendMessage(player, "must_be_owner_or_co_owner")
-                );
+                plugin.getTaskRunner().runOnEntity(player,
+                        () -> messageManager.sendMessage(player, "must_be_owner_or_co_owner"));
                 return;
             }
             if (storage.deleteTeamWarp(team.getId(), warpName)) {
                 publishCrossServerUpdate(team.getId(), "WARP_DELETED", player.getUniqueId().toString(), warpName);
-                
-                plugin.getTaskRunner().runOnEntity(player, () ->
-                    messageManager.sendMessage(player, "warp_deleted", Placeholder.unparsed("warp", warpName))
-                );
+
+                plugin.getTaskRunner().runOnEntity(player, () -> messageManager.sendMessage(player, "warp_deleted",
+                        Placeholder.unparsed("warp", warpName)));
             }
         });
     }
+
     public void teleportToTeamWarp(Player player, String warpName, String password) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -2140,7 +2471,8 @@ public class TeamManager {
                 if (warp.password() != null && !warp.password().equals(password)) {
                     if (password == null) {
                         messageManager.sendMessage(player, "warp_password_protected");
-                        messageManager.sendMessage(player, "prompt_warp_password", Placeholder.unparsed("warp", warpName));
+                        messageManager.sendMessage(player, "prompt_warp_password",
+                                Placeholder.unparsed("warp", warpName));
                         plugin.getChatInputManager().awaitInput(player, null, input -> {
                             if (input.equalsIgnoreCase("cancel")) {
                                 messageManager.sendMessage(player, "action_cancelled");
@@ -2149,7 +2481,8 @@ public class TeamManager {
                             teleportToTeamWarp(player, warpName, input);
                         });
                     } else {
-                        messageManager.sendMessage(player, "warp_incorrect_password", Placeholder.unparsed("warp", warpName));
+                        messageManager.sendMessage(player, "warp_incorrect_password",
+                                Placeholder.unparsed("warp", warpName));
                     }
                     return;
                 }
@@ -2169,6 +2502,7 @@ public class TeamManager {
             });
         });
     }
+
     private boolean checkWarpCooldown(Player player) {
         if (player.hasPermission("justteams.bypass.warp.cooldown")) {
             return false;
@@ -2176,11 +2510,13 @@ public class TeamManager {
         Instant cooldownEnd = warpCooldowns.get(player.getUniqueId());
         if (cooldownEnd != null && Instant.now().isBefore(cooldownEnd)) {
             long remainingSeconds = cooldownEnd.getEpochSecond() - Instant.now().getEpochSecond();
-            messageManager.sendMessage(player, "warp_cooldown", Placeholder.unparsed("seconds", String.valueOf(remainingSeconds)));
+            messageManager.sendMessage(player, "warp_cooldown",
+                    Placeholder.unparsed("seconds", String.valueOf(remainingSeconds)));
             return true;
         }
         return false;
     }
+
     public void openWarpsGUI(Player player) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -2190,12 +2526,13 @@ public class TeamManager {
         try {
             Class<?> warpsGUIClass = Class.forName("eu.kotori.justTeams.gui.WarpsGUI");
             Object warpsGUI = warpsGUIClass.getConstructor(plugin.getClass(), Team.class, Player.class)
-                .newInstance(plugin, team, player);
+                    .newInstance(plugin, team, player);
             warpsGUIClass.getMethod("open").invoke(warpsGUI);
         } catch (Exception e) {
             listTeamWarps(player);
         }
     }
+
     public void listTeamWarps(Player player) {
         Team team = getPlayerTeam(player.getUniqueId());
         if (team == null) {
@@ -2213,14 +2550,14 @@ public class TeamManager {
                 for (IDataStorage.TeamWarp warp : warps) {
                     String statusIcon = warp.password() != null ? "🔒" : "";
                     messageManager.sendMessage(player, "warp_list_entry",
-                        Placeholder.unparsed("warp_name", warp.name()),
-                        Placeholder.unparsed("status_icon", statusIcon)
-                    );
+                            Placeholder.unparsed("warp_name", warp.name()),
+                            Placeholder.unparsed("status_icon", statusIcon));
                 }
                 messageManager.sendMessage(player, "warp_list_footer");
             });
         });
     }
+
     public void syncCrossServerData() {
         if (!plugin.getConfigManager().isCrossServerSyncEnabled()) {
             return;
@@ -2280,8 +2617,9 @@ public class TeamManager {
                 }
 
                 long duration = System.currentTimeMillis() - startTime;
-                if (plugin.getConfigManager().isDebugEnabled()) {
-                    plugin.getLogger().info("Cross-server sync completed in " + duration + "ms for " + teamNames.size() + " teams");
+                if (plugin.getConfigManager().isDebugEnabled() && duration > 100) {
+                    plugin.getLogger().info(
+                            "Cross-server sync completed in " + duration + "ms for " + teamNames.size() + " teams");
                 }
 
             } catch (Exception e) {
@@ -2294,6 +2632,7 @@ public class TeamManager {
             }
         });
     }
+
     private void syncTeamDataAsync(Team cachedTeam, Team databaseTeam) {
         plugin.getTaskRunner().runAsync(() -> {
             try {
@@ -2304,19 +2643,22 @@ public class TeamManager {
                         if (!cachedJoinRequests.contains(requestUuid)) {
                             cachedTeam.addJoinRequest(requestUuid);
                             if (plugin.getConfigManager().isDebugEnabled()) {
-                                plugin.getLogger().info("Synced join request for team " + databaseTeam.getName() + " from player " + requestUuid);
+                                plugin.getLogger().info("Synced join request for team " + databaseTeam.getName()
+                                        + " from player " + requestUuid);
                             }
                             for (TeamPlayer member : cachedTeam.getMembers()) {
                                 if (member.isOnline() && cachedTeam.hasElevatedPermissions(member.getPlayerUuid())) {
                                     messageManager.sendMessage(member.getBukkitPlayer(), "join_request_notification",
-                                        net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player", "a player"));
+                                            net.kyori.adventure.text.minimessage.tag.resolver.Placeholder
+                                                    .unparsed("player", "a player"));
                                 }
                             }
                         }
                     }
                 });
             } catch (Exception e) {
-                plugin.getLogger().warning("Error in async team sync for " + cachedTeam.getName() + ": " + e.getMessage());
+                plugin.getLogger()
+                        .warning("Error in async team sync for " + cachedTeam.getName() + ": " + e.getMessage());
             }
         });
     }
@@ -2327,11 +2669,13 @@ public class TeamManager {
         for (UUID requestUuid : databaseJoinRequests) {
             if (!cachedJoinRequests.contains(requestUuid)) {
                 cachedTeam.addJoinRequest(requestUuid);
-                plugin.getLogger().info("Synced join request for team " + databaseTeam.getName() + " from player " + requestUuid);
+                plugin.getLogger()
+                        .info("Synced join request for team " + databaseTeam.getName() + " from player " + requestUuid);
                 for (TeamPlayer member : cachedTeam.getMembers()) {
                     if (member.isOnline() && cachedTeam.hasElevatedPermissions(member.getPlayerUuid())) {
                         messageManager.sendMessage(member.getBukkitPlayer(), "join_request_notification",
-                            net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player", "a player"));
+                                net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player",
+                                        "a player"));
                     }
                 }
             }
@@ -2339,17 +2683,20 @@ public class TeamManager {
         for (UUID requestUuid : cachedJoinRequests) {
             if (!databaseJoinRequests.contains(requestUuid)) {
                 cachedTeam.removeJoinRequest(requestUuid);
-                plugin.getLogger().info("Removed stale join request for team " + databaseTeam.getName() + " from player " + requestUuid);
+                plugin.getLogger().info("Removed stale join request for team " + databaseTeam.getName()
+                        + " from player " + requestUuid);
             }
         }
     }
+
     public void syncCriticalUpdates() {
         if (!plugin.getConfigManager().isCrossServerSyncEnabled()) {
             return;
         }
         plugin.getTaskRunner().runAsync(() -> {
             try {
-                List<CrossServerUpdate> pendingUpdates = storage.getCrossServerUpdates(plugin.getConfigManager().getServerIdentifier());
+                List<CrossServerUpdate> pendingUpdates = storage
+                        .getCrossServerUpdates(plugin.getConfigManager().getServerIdentifier());
                 if (pendingUpdates.isEmpty()) {
                     return;
                 }
@@ -2365,6 +2712,7 @@ public class TeamManager {
             }
         });
     }
+
     private int processCrossServerUpdatesWithRetry() {
         int maxRetries = plugin.getConfigManager().getMaxSyncRetries();
         int retryDelay = plugin.getConfigManager().getSyncRetryDelay();
@@ -2373,13 +2721,16 @@ public class TeamManager {
                 return processCrossServerUpdates();
             } catch (Exception e) {
                 if (attempt == maxRetries) {
-                    plugin.getLogger().severe("Failed to process cross-server updates after " + maxRetries + " attempts: " + e.getMessage());
+                    plugin.getLogger().severe("Failed to process cross-server updates after " + maxRetries
+                            + " attempts: " + e.getMessage());
                     if (plugin.getConfigManager().isDebugEnabled()) {
-                        plugin.getLogger().log(java.util.logging.Level.FINE, "Cross-server updates retry error details", e);
+                        plugin.getLogger().log(java.util.logging.Level.FINE, "Cross-server updates retry error details",
+                                e);
                     }
                     return 0;
                 } else {
-                    plugin.getLogger().warning("Cross-server update attempt " + (attempt + 1) + " failed, retrying in " + retryDelay + "ms: " + e.getMessage());
+                    plugin.getLogger().warning("Cross-server update attempt " + (attempt + 1) + " failed, retrying in "
+                            + retryDelay + "ms: " + e.getMessage());
                     try {
                         Thread.sleep(retryDelay);
                     } catch (InterruptedException ie) {
@@ -2391,8 +2742,10 @@ public class TeamManager {
         }
         return 0;
     }
+
     private final ConcurrentHashMap<Integer, Long> lastSyncTimes = new ConcurrentHashMap<>();
     private static final long SYNC_COOLDOWN = 5000;
+
     public void forceTeamSync(int teamId) {
         if (!plugin.getConfigManager().isCrossServerSyncEnabled()) {
             return;
@@ -2412,13 +2765,14 @@ public class TeamManager {
                 if (databaseTeamOpt.isPresent()) {
                     Team databaseTeam = databaseTeamOpt.get();
                     Team cachedTeam = teamNameCache.values().stream()
-                        .filter(team -> team.getId() == teamId)
-                        .findFirst()
-                        .orElse(null);
+                            .filter(team -> team.getId() == teamId)
+                            .findFirst()
+                            .orElse(null);
                     if (cachedTeam != null) {
                         syncTeamDataOptimized(cachedTeam, databaseTeam);
                         if (plugin.getConfigManager().isDebugEnabled()) {
-                            plugin.getDebugLogger().log("Force synced team " + databaseTeam.getName() + " (ID: " + teamId + ")");
+                            plugin.getDebugLogger()
+                                    .log("Force synced team " + databaseTeam.getName() + " (ID: " + teamId + ")");
                         }
                     }
                 }
@@ -2430,20 +2784,22 @@ public class TeamManager {
             }
         });
     }
-    
+
     private void refreshPlayerGUIIfOpen(Player player) {
         if (player == null || !player.isOnline()) {
             return;
         }
-        
+
         plugin.getTaskRunner().runOnEntity(player, () -> {
             try {
                 org.bukkit.inventory.InventoryView openInventory = player.getOpenInventory();
-                if (openInventory != null && openInventory.getTopInventory().getHolder() instanceof eu.kotori.justTeams.gui.TeamGUI teamGUI) {
+                if (openInventory != null && openInventory.getTopInventory()
+                        .getHolder() instanceof eu.kotori.justTeams.gui.TeamGUI teamGUI) {
                     teamGUI.refresh();
-                    
+
                     if (plugin.getConfigManager().isDebugEnabled()) {
-                        plugin.getDebugLogger().log("Refreshed TeamGUI for " + player.getName() + " after team data change");
+                        plugin.getDebugLogger()
+                                .log("Refreshed TeamGUI for " + player.getName() + " after team data change");
                     }
                 }
             } catch (Exception e) {
@@ -2454,12 +2810,12 @@ public class TeamManager {
             }
         });
     }
-    
+
     public void refreshTeamGUIsForAllMembers(Team team) {
         if (team == null) {
             return;
         }
-        
+
         for (TeamPlayer member : team.getMembers()) {
             Player player = member.getBukkitPlayer();
             if (player != null && player.isOnline()) {
@@ -2467,25 +2823,25 @@ public class TeamManager {
             }
         }
     }
-    
+
     private void syncTeamDataOptimized(Team cachedTeam, Team databaseTeam) {
         try {
             boolean needsUpdate = false;
             if (!cachedTeam.getName().equals(databaseTeam.getName()) ||
-                !cachedTeam.getTag().equals(databaseTeam.getTag()) ||
-                cachedTeam.isPvpEnabled() != databaseTeam.isPvpEnabled() ||
-                cachedTeam.isPublic() != databaseTeam.isPublic() ||
-                cachedTeam.getBalance() != databaseTeam.getBalance() ||
-                cachedTeam.getKills() != databaseTeam.getKills() ||
-                cachedTeam.getDeaths() != databaseTeam.getDeaths()) {
+                    !cachedTeam.getTag().equals(databaseTeam.getTag()) ||
+                    cachedTeam.isPvpEnabled() != databaseTeam.isPvpEnabled() ||
+                    cachedTeam.isPublic() != databaseTeam.isPublic() ||
+                    cachedTeam.getBalance() != databaseTeam.getBalance() ||
+                    cachedTeam.getKills() != databaseTeam.getKills() ||
+                    cachedTeam.getDeaths() != databaseTeam.getDeaths()) {
                 needsUpdate = true;
             }
             if (!cachedTeam.getOwnerUuid().equals(databaseTeam.getOwnerUuid())) {
                 needsUpdate = true;
             }
             if ((cachedTeam.getHomeLocation() == null) != (databaseTeam.getHomeLocation() == null) ||
-                (cachedTeam.getHomeLocation() != null && databaseTeam.getHomeLocation() != null &&
-                 !cachedTeam.getHomeLocation().equals(databaseTeam.getHomeLocation()))) {
+                    (cachedTeam.getHomeLocation() != null && databaseTeam.getHomeLocation() != null &&
+                            !cachedTeam.getHomeLocation().equals(databaseTeam.getHomeLocation()))) {
                 needsUpdate = true;
             }
             if (needsUpdate) {
@@ -2493,12 +2849,14 @@ public class TeamManager {
                 plugin.getDebugLogger().log("Synced team " + cachedTeam.getName() + " with database changes");
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("Error during optimized team sync for " + cachedTeam.getName() + ": " + e.getMessage());
+            plugin.getLogger()
+                    .warning("Error during optimized team sync for " + cachedTeam.getName() + ": " + e.getMessage());
             if (plugin.getConfigManager().isDebugEnabled()) {
                 plugin.getLogger().log(java.util.logging.Level.FINE, "Optimized team sync error details", e);
             }
         }
     }
+
     private void updateCachedTeamFromDatabase(Team cachedTeam, Team databaseTeam) {
         try {
             cachedTeam.setName(databaseTeam.getName());
@@ -2515,7 +2873,8 @@ public class TeamManager {
             }
             if (!cachedTeam.getOwnerUuid().equals(databaseTeam.getOwnerUuid())) {
                 cachedTeam.setOwnerUuid(databaseTeam.getOwnerUuid());
-                plugin.getLogger().info("Team " + cachedTeam.getName() + " ownership changed to " + databaseTeam.getOwnerUuid());
+                plugin.getLogger()
+                        .info("Team " + cachedTeam.getName() + " ownership changed to " + databaseTeam.getOwnerUuid());
             }
             List<TeamPlayer> databaseMembers = storage.getTeamMembers(cachedTeam.getId());
             cachedTeam.getMembers().clear();
@@ -2523,37 +2882,46 @@ public class TeamManager {
                 cachedTeam.addMember(member);
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("Error updating cached team " + cachedTeam.getName() + " from database: " + e.getMessage());
+            plugin.getLogger().warning(
+                    "Error updating cached team " + cachedTeam.getName() + " from database: " + e.getMessage());
         }
     }
+
     private void sendCrossServerTeamUpdate(int teamId, String updateType, UUID playerUuid) {
         if (!plugin.getConfigManager().isCrossServerSyncEnabled()) {
             return;
         }
         plugin.getTaskRunner().runAsync(() -> {
             try {
-                storage.addCrossServerUpdate(teamId, updateType, playerUuid.toString(), plugin.getConfigManager().getServerIdentifier());
+                storage.addCrossServerUpdate(teamId, updateType, playerUuid.toString(),
+                        plugin.getConfigManager().getServerIdentifier());
                 plugin.getLogger().fine("Sent cross-server update: " + updateType + " for team " + teamId);
             } catch (Exception e) {
                 plugin.getLogger().warning("Failed to send cross-server update: " + e.getMessage());
             }
         });
     }
+
     private final List<CrossServerUpdate> pendingCrossServerUpdates = new CopyOnWriteArrayList<>();
     private final Object crossServerUpdateLock = new Object();
+
     private void sendCrossServerTeamUpdateBatch(int teamId, String updateType, UUID playerUuid) {
         if (!plugin.getConfigManager().isCrossServerSyncEnabled()) {
             return;
         }
         synchronized (crossServerUpdateLock) {
-            pendingCrossServerUpdates.add(new CrossServerUpdate(0, teamId, updateType, playerUuid.toString(), plugin.getConfigManager().getServerIdentifier(), new java.sql.Timestamp(System.currentTimeMillis())));
+            pendingCrossServerUpdates.add(new CrossServerUpdate(0, teamId, updateType, playerUuid.toString(),
+                    plugin.getConfigManager().getServerIdentifier(),
+                    new java.sql.Timestamp(System.currentTimeMillis())));
             if (pendingCrossServerUpdates.size() >= plugin.getConfigManager().getMaxBatchSize()) {
                 flushCrossServerUpdates();
             }
         }
     }
+
     public void flushCrossServerUpdates() {
-        if (pendingCrossServerUpdates.isEmpty()) return;
+        if (pendingCrossServerUpdates.isEmpty())
+            return;
         List<CrossServerUpdate> updatesToSend;
         synchronized (crossServerUpdateLock) {
             updatesToSend = new ArrayList<>(pendingCrossServerUpdates);
@@ -2570,7 +2938,6 @@ public class TeamManager {
             });
         }
     }
-    
 
     public int processCrossServerMessages() {
         if (!plugin.getConfigManager().isCrossServerSyncEnabled()) {
@@ -2578,38 +2945,39 @@ public class TeamManager {
         }
         try {
             List<IDataStorage.CrossServerMessage> messages = storage.getCrossServerMessages(
-                plugin.getConfigManager().getServerIdentifier());
+                    plugin.getConfigManager().getServerIdentifier());
             int processedCount = 0;
-            
+
             for (IDataStorage.CrossServerMessage msg : messages) {
                 try {
                     processCrossServerMessage(msg);
                     storage.removeCrossServerMessage(msg.id());
                     processedCount++;
                 } catch (Exception e) {
-                    plugin.getLogger().warning("Failed to process cross-server message " + msg.id() + ": " + e.getMessage());
+                    plugin.getLogger()
+                            .warning("Failed to process cross-server message " + msg.id() + ": " + e.getMessage());
                 }
             }
-            
+
             if (processedCount > 0) {
                 plugin.getLogger().info("Processed " + processedCount + " cross-server team chat messages from MySQL");
             }
-            
+
             return processedCount;
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to process cross-server messages: " + e.getMessage());
             return 0;
         }
     }
-    
+
     private void processCrossServerMessage(IDataStorage.CrossServerMessage msg) {
         plugin.getTaskRunner().run(() -> {
             try {
                 Team team = teamNameCache.values().stream()
-                    .filter(t -> t.getId() == msg.teamId())
-                    .findFirst()
-                    .orElse(null);
-                    
+                        .filter(t -> t.getId() == msg.teamId())
+                        .findFirst()
+                        .orElse(null);
+
                 if (team == null) {
                     Optional<Team> dbTeam = storage.findTeamById(msg.teamId());
                     if (dbTeam.isPresent()) {
@@ -2619,13 +2987,13 @@ public class TeamManager {
                         return;
                     }
                 }
-                
+
                 final Team finalTeam = team;
-                
+
                 UUID senderUuid = UUID.fromString(msg.playerUuid());
                 Optional<String> playerNameOpt = storage.getPlayerNameByUuid(senderUuid);
                 String playerName = playerNameOpt.orElse("Unknown");
-                
+
                 String playerPrefix = "";
                 String playerSuffix = "";
                 Player onlineSender = plugin.getServer().getPlayer(senderUuid);
@@ -2635,15 +3003,18 @@ public class TeamManager {
                 }
                 String format = messageManager.getRawMessage("team_chat_format");
                 Component formattedMessage = plugin.getMiniMessage().deserialize(format,
-                    net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player", playerName),
-                    net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("prefix", playerPrefix),
-                    net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player_prefix", playerPrefix),
-                    net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("suffix", playerSuffix),
-                    net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player_suffix", playerSuffix),
-                    net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("team_name", finalTeam.getName()),
-                    net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("message", msg.message())
-                );
-                
+                        net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player", playerName),
+                        net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("prefix", playerPrefix),
+                        net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player_prefix",
+                                playerPrefix),
+                        net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("suffix", playerSuffix),
+                        net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("player_suffix",
+                                playerSuffix),
+                        net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("team_name",
+                                finalTeam.getName()),
+                        net.kyori.adventure.text.minimessage.tag.resolver.Placeholder.unparsed("message",
+                                msg.message()));
+
                 int recipientCount = 0;
                 for (TeamPlayer member : finalTeam.getMembers()) {
                     Player onlinePlayer = member.getBukkitPlayer();
@@ -2652,12 +3023,12 @@ public class TeamManager {
                         recipientCount++;
                     }
                 }
-                
+
                 if (recipientCount > 0) {
-                    plugin.getLogger().info("Delivered cross-server chat from " + playerName + 
-                        " (Server: " + msg.serverName() + ") to " + recipientCount + " players on this server");
+                    plugin.getLogger().info("Delivered cross-server chat from " + playerName +
+                            " (Server: " + msg.serverName() + ") to " + recipientCount + " players on this server");
                 }
-                
+
             } catch (Exception e) {
                 plugin.getLogger().warning("Failed to process cross-server chat message: " + e.getMessage());
                 if (plugin.getConfigManager().isDebugEnabled()) {
@@ -2666,13 +3037,14 @@ public class TeamManager {
             }
         });
     }
-    
+
     public int processCrossServerUpdates() {
         if (!plugin.getConfigManager().isCrossServerSyncEnabled()) {
             return 0;
         }
         try {
-            List<CrossServerUpdate> updates = storage.getCrossServerUpdates(plugin.getConfigManager().getServerIdentifier());
+            List<CrossServerUpdate> updates = storage
+                    .getCrossServerUpdates(plugin.getConfigManager().getServerIdentifier());
             int processedCount = 0;
             for (CrossServerUpdate update : updates) {
                 try {
@@ -2680,7 +3052,8 @@ public class TeamManager {
                     storage.removeCrossServerUpdate(update.id());
                     processedCount++;
                 } catch (Exception e) {
-                    plugin.getLogger().warning("Failed to process cross-server update " + update.id() + ": " + e.getMessage());
+                    plugin.getLogger()
+                            .warning("Failed to process cross-server update " + update.id() + ": " + e.getMessage());
                 }
             }
             return processedCount;
@@ -2689,13 +3062,14 @@ public class TeamManager {
             return 0;
         }
     }
+
     private void processCrossServerUpdate(CrossServerUpdate update) {
         plugin.getTaskRunner().run(() -> {
             try {
                 Team team = teamNameCache.values().stream()
-                    .filter(t -> t.getId() == update.teamId())
-                    .findFirst()
-                    .orElse(null);
+                        .filter(t -> t.getId() == update.teamId())
+                        .findFirst()
+                        .orElse(null);
                 if (team == null) {
                     Optional<Team> dbTeam = storage.findTeamById(update.teamId());
                     if (dbTeam.isPresent()) {
@@ -2703,15 +3077,15 @@ public class TeamManager {
                         team = dbTeam.get();
                     }
                 }
-                
+
                 final Team finalTeam = team;
-                
+
                 if (finalTeam != null) {
                     switch (update.updateType()) {
                         case "PLAYER_INVITED" -> {
                             try {
                                 UUID invitedPlayerUuid = UUID.fromString(update.playerUuid());
-                                
+
                                 List<String> invites = teamInvites.getIfPresent(invitedPlayerUuid);
                                 if (invites == null) {
                                     invites = new ArrayList<>();
@@ -2720,42 +3094,53 @@ public class TeamManager {
                                     invites.add(finalTeam.getName().toLowerCase());
                                     teamInvites.put(invitedPlayerUuid, invites);
                                 }
-                                
+
                                 Player onlinePlayer = Bukkit.getPlayer(invitedPlayerUuid);
                                 if (onlinePlayer != null && onlinePlayer.isOnline()) {
                                     plugin.getTaskRunner().runOnEntity(onlinePlayer, () -> {
                                         messageManager.sendRawMessage(onlinePlayer,
-                                            messageManager.getRawMessage("prefix") +
-                                            messageManager.getRawMessage("invite_received").replace("<team>", finalTeam.getName()));
+                                                messageManager.getRawMessage("prefix") +
+                                                        messageManager.getRawMessage("invite_received")
+                                                                .replace("<team>", finalTeam.getName()));
                                         messageManager.sendMessage(onlinePlayer, "pending_invites_singular");
                                         EffectsUtil.playSound(onlinePlayer, EffectsUtil.SoundType.SUCCESS);
                                     });
                                 }
-                                
-                                plugin.getLogger().info("Processed cross-server invite for player " + invitedPlayerUuid + " to team: " + finalTeam.getName());
+
+                                plugin.getLogger().info("Processed cross-server invite for player " + invitedPlayerUuid
+                                        + " to team: " + finalTeam.getName());
                             } catch (IllegalArgumentException e) {
-                                plugin.getLogger().warning("Invalid player UUID in PLAYER_INVITED update: " + update.playerUuid());
+                                plugin.getLogger().warning(
+                                        "Invalid player UUID in PLAYER_INVITED update: " + update.playerUuid());
                             }
                         }
                         case "MEMBER_ADDED" -> {
                             forceTeamSync(finalTeam.getId());
-                            plugin.getLogger().info("Processed cross-server member addition for team: " + finalTeam.getName());
+                            plugin.getLogger()
+                                    .info("Processed cross-server member addition for team: " + finalTeam.getName());
                         }
                         case "MEMBER_REMOVED" -> {
                             forceTeamSync(finalTeam.getId());
-                            plugin.getLogger().info("Processed cross-server member removal for team: " + finalTeam.getName());
+                            plugin.getLogger()
+                                    .info("Processed cross-server member removal for team: " + finalTeam.getName());
                         }
-                        case "TEAM_UPDATED" -> {
+                        case "TEAM_UPDATED", "GLOW_TOGGLED" -> {
                             forceTeamSync(finalTeam.getId());
-                            plugin.getLogger().info("Processed cross-server team update for team: " + finalTeam.getName());
+                            plugin.getLogger()
+                                    .info("Processed cross-server team update for team: " + finalTeam.getName());
+                            plugin.getTaskRunner().runLater(() -> {
+                                plugin.getGlowManager().updateGlowForTeam(finalTeam);
+                            }, 40L);
                         }
                         case "PUBLIC_STATUS_CHANGED", "PVP_STATUS_CHANGED" -> {
                             forceTeamSync(finalTeam.getId());
-                            plugin.getLogger().info("Processed cross-server " + update.updateType() + " for team: " + finalTeam.getName());
+                            plugin.getLogger().info("Processed cross-server " + update.updateType() + " for team: "
+                                    + finalTeam.getName());
                         }
                         case "ADMIN_BALANCE_SET", "ADMIN_STATS_SET" -> {
                             forceTeamSync(finalTeam.getId());
-                            plugin.getLogger().info("Processed cross-server admin update (" + update.updateType() + ") for team: " + finalTeam.getName());
+                            plugin.getLogger().info("Processed cross-server admin update (" + update.updateType()
+                                    + ") for team: " + finalTeam.getName());
                         }
                         case "ADMIN_PERMISSION_UPDATE" -> {
                             try {
@@ -2764,12 +3149,14 @@ public class TeamManager {
                                     UUID memberUuid = UUID.fromString(parts[0]);
                                     String permission = parts[1];
                                     boolean value = Boolean.parseBoolean(parts[2]);
-                                    
+
                                     forceMemberPermissionRefresh(finalTeam.getId(), memberUuid);
-                                    plugin.getLogger().info("Processed cross-server admin permission update for member " + memberUuid + " in team: " + finalTeam.getName());
+                                    plugin.getLogger().info("Processed cross-server admin permission update for member "
+                                            + memberUuid + " in team: " + finalTeam.getName());
                                 }
                             } catch (Exception e) {
-                                plugin.getLogger().warning("Failed to parse ADMIN_PERMISSION_UPDATE data: " + update.playerUuid());
+                                plugin.getLogger().warning(
+                                        "Failed to parse ADMIN_PERMISSION_UPDATE data: " + update.playerUuid());
                             }
                         }
                         case "ADMIN_MEMBER_KICK" -> {
@@ -2777,18 +3164,22 @@ public class TeamManager {
                                 UUID memberUuid = UUID.fromString(update.playerUuid());
                                 finalTeam.removeMember(memberUuid);
                                 playerTeamCache.remove(memberUuid);
-                                plugin.getLogger().info("Processed cross-server admin kick for member " + memberUuid + " from team: " + finalTeam.getName());
+                                plugin.getLogger().info("Processed cross-server admin kick for member " + memberUuid
+                                        + " from team: " + finalTeam.getName());
                             } catch (Exception e) {
-                                plugin.getLogger().warning("Failed to parse ADMIN_MEMBER_KICK playerUuid: " + update.playerUuid());
+                                plugin.getLogger().warning(
+                                        "Failed to parse ADMIN_MEMBER_KICK playerUuid: " + update.playerUuid());
                             }
                         }
                         case "ADMIN_MEMBER_PROMOTE", "ADMIN_MEMBER_DEMOTE" -> {
                             try {
                                 UUID memberUuid = UUID.fromString(update.playerUuid());
                                 forceMemberPermissionRefresh(finalTeam.getId(), memberUuid);
-                                plugin.getLogger().info("Processed cross-server admin " + update.updateType() + " for member " + memberUuid + " in team: " + finalTeam.getName());
+                                plugin.getLogger().info("Processed cross-server admin " + update.updateType()
+                                        + " for member " + memberUuid + " in team: " + finalTeam.getName());
                             } catch (Exception e) {
-                                plugin.getLogger().warning("Failed to parse " + update.updateType() + " playerUuid: " + update.playerUuid());
+                                plugin.getLogger().warning("Failed to parse " + update.updateType() + " playerUuid: "
+                                        + update.playerUuid());
                             }
                         }
                         case "ENDERCHEST_UPDATED" -> {
@@ -2807,13 +3198,18 @@ public class TeamManager {
                                             plugin.getTaskRunner().run(() -> {
                                                 refreshEnderChestInventory(finalTeam);
                                             });
-                                            plugin.getLogger().info("✓ Enderchest reloaded from database (MySQL fallback) for team: " + finalTeam.getName());
+                                            plugin.getLogger().info(
+                                                    "✓ Enderchest reloaded from database (MySQL fallback) for team: "
+                                                            + finalTeam.getName());
                                         }
                                     } else {
-                                        plugin.getLogger().info("Skipped enderchest update (lock held) for team: " + finalTeam.getName());
+                                        plugin.getLogger().info("Skipped enderchest update (lock held) for team: "
+                                                + finalTeam.getName());
                                     }
                                 } catch (Exception e) {
-                                    plugin.getLogger().warning("Failed to process ENDERCHEST_UPDATED (MySQL fallback) for team " + finalTeam.getName() + ": " + e.getMessage());
+                                    plugin.getLogger()
+                                            .warning("Failed to process ENDERCHEST_UPDATED (MySQL fallback) for team "
+                                                    + finalTeam.getName() + ": " + e.getMessage());
                                 }
                             });
                         }
@@ -2824,6 +3220,7 @@ public class TeamManager {
             }
         });
     }
+
     public void cleanupExpiredCache() {
         synchronized (cacheLock) {
             try {
@@ -2840,6 +3237,7 @@ public class TeamManager {
             }
         }
     }
+
     public void shutdown() {
         synchronized (cacheLock) {
             plugin.getLogger().info("TeamManager shutdown initiated. Saving all pending changes...");
@@ -2854,20 +3252,18 @@ public class TeamManager {
             }
         }
     }
+
     private void refreshTeamMembers(Team team) {
-        List<TeamPlayer> currentMembers = new ArrayList<>(team.getMembers());
-        team.getMembers().clear();
-        for (TeamPlayer member : currentMembers) {
-            if (member.isOnline()) {
-                team.addMember(member);
-            } else {
-                plugin.getLogger().warning("Member " + member.getPlayerUuid() + " is offline, removing from team.");
-            }
+        long onlineCount = team.getMembers().stream().filter(TeamPlayer::isOnline).count();
+        if (plugin.getConfigManager().isDebugEnabled()) {
+            plugin.getLogger().info("Team " + team.getName() + " has " + team.getMembers().size() +
+                    " total members (" + onlineCount + " online).");
         }
-        plugin.getLogger().info("Refreshed team " + team.getName() + " with " + team.getMembers().size() + " online members.");
     }
+
     public void refreshAllTeamMemberGUIs(Team team) {
-        if (team == null) return;
+        if (team == null)
+            return;
         team.getMembers().stream()
                 .filter(TeamPlayer::isOnline)
                 .forEach(member -> {
@@ -2881,6 +3277,7 @@ public class TeamManager {
                     }
                 });
     }
+
     private void refreshTeamData(int teamId) {
         plugin.getTaskRunner().runAsync(() -> {
             Optional<Team> refreshedTeam = storage.findTeamById(teamId);
@@ -2893,15 +3290,18 @@ public class TeamManager {
                 for (TeamPlayer member : members) {
                     playerTeamCache.put(member.getPlayerUuid(), team);
                 }
-                plugin.getLogger().info("Refreshed team " + team.getName() + " with " + members.size() + " members from database");
+                plugin.getLogger().info(
+                        "Refreshed team " + team.getName() + " with " + members.size() + " members from database");
                 if (plugin.getConfigManager().isDebugEnabled()) {
                     for (TeamPlayer member : members) {
-                        plugin.getLogger().info("Member " + member.getPlayerUuid() + " permissions after refresh - canUseEnderChest: " + member.canUseEnderChest());
+                        plugin.getLogger().info("Member " + member.getPlayerUuid()
+                                + " permissions after refresh - canUseEnderChest: " + member.canUseEnderChest());
                     }
                 }
             }
         });
     }
+
     public void forceTeamRefresh(int teamId) {
         plugin.getTaskRunner().runAsync(() -> {
             Optional<Team> teamOpt = storage.findTeamById(teamId);
@@ -2912,6 +3312,7 @@ public class TeamManager {
             }
         });
     }
+
     public void forceTeamRefreshFromDatabase(int teamId) {
         plugin.getTaskRunner().runAsync(() -> {
             try {
@@ -2929,6 +3330,7 @@ public class TeamManager {
             }
         });
     }
+
     public void forceMemberPermissionRefresh(int teamId, UUID memberUuid) {
         try {
             Optional<Team> teamOpt = storage.findTeamById(teamId);
@@ -2938,15 +3340,16 @@ public class TeamManager {
                 if (member != null) {
                     List<TeamPlayer> freshMembers = storage.getTeamMembers(teamId);
                     TeamPlayer freshMember = freshMembers.stream()
-                        .filter(m -> m != null && m.getPlayerUuid() != null && m.getPlayerUuid().equals(memberUuid))
-                        .findFirst()
-                        .orElse(null);
+                            .filter(m -> m != null && m.getPlayerUuid() != null && m.getPlayerUuid().equals(memberUuid))
+                            .findFirst()
+                            .orElse(null);
                     if (freshMember != null) {
                         member.setCanWithdraw(freshMember.canWithdraw());
                         member.setCanUseEnderChest(freshMember.canUseEnderChest());
                         member.setCanSetHome(freshMember.canSetHome());
                         member.setCanUseHome(freshMember.canUseHome());
-                        plugin.getLogger().info("Refreshed member " + memberUuid + " permissions from database - canUseEnderChest: " + member.canUseEnderChest());
+                        plugin.getLogger().info("Refreshed member " + memberUuid
+                                + " permissions from database - canUseEnderChest: " + member.canUseEnderChest());
                         Player player = Bukkit.getPlayer(memberUuid);
                         if (player != null && player.isOnline()) {
                             plugin.getTaskRunner().runOnEntity(player, () -> {
@@ -2959,9 +3362,11 @@ public class TeamManager {
                 }
             }
         } catch (Exception e) {
-            plugin.getLogger().severe("Error refreshing member permissions for " + memberUuid + " in team " + teamId + ": " + e.getMessage());
+            plugin.getLogger().severe("Error refreshing member permissions for " + memberUuid + " in team " + teamId
+                    + ": " + e.getMessage());
         }
     }
+
     public void cleanupEnderChestLocksOnStartup() {
         if (plugin.getConfigManager().isSingleServerMode()) {
             plugin.getLogger().info("Single-server mode detected. Cleaning up any existing enderchest locks...");
@@ -2975,33 +3380,38 @@ public class TeamManager {
             });
         }
     }
+
     public void forceSaveTeamData(int teamId) {
         Team team = teamNameCache.values().stream()
-            .filter(t -> t.getId() == teamId)
-            .findFirst()
-            .orElse(null);
+                .filter(t -> t.getId() == teamId)
+                .findFirst()
+                .orElse(null);
         if (team == null) {
-            plugin.getLogger().warning("Could not force save team data for team ID " + teamId + " - team not found in cache");
+            plugin.getLogger()
+                    .warning("Could not force save team data for team ID " + teamId + " - team not found in cache");
             return;
         }
         try {
             for (TeamPlayer member : team.getMembers()) {
-                plugin.getLogger().info("Force saving permissions for member " + member.getPlayerUuid() + " in team " + team.getName() +
-                    " - canUseEnderChest: " + member.canUseEnderChest() +
-                    ", canEditMembers: " + member.canEditMembers());
+                plugin.getLogger()
+                        .info("Force saving permissions for member " + member.getPlayerUuid() + " in team "
+                                + team.getName() +
+                                " - canUseEnderChest: " + member.canUseEnderChest() +
+                                ", canEditMembers: " + member.canEditMembers());
                 storage.updateMemberPermissions(team.getId(), member.getPlayerUuid(),
-                    member.canWithdraw(), member.canUseEnderChest(),
-                    member.canSetHome(), member.canUseHome());
+                        member.canWithdraw(), member.canUseEnderChest(),
+                        member.canSetHome(), member.canUseHome());
                 storage.updateMemberEditingPermissions(team.getId(), member.getPlayerUuid(),
-                    member.canEditMembers(), member.canEditCoOwners(),
-                    member.canKickMembers(), member.canPromoteMembers(),
-                    member.canDemoteMembers());
+                        member.canEditMembers(), member.canEditCoOwners(),
+                        member.canKickMembers(), member.canPromoteMembers(),
+                        member.canDemoteMembers());
             }
             plugin.getLogger().info("Successfully force saved team: " + team.getName());
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to force save team " + team.getName() + ": " + e.getMessage());
         }
     }
+
     public void forceSaveAllTeamData() {
         if (plugin.getConfigManager().isDebugEnabled()) {
             plugin.getDebugLogger().log("Force saving all team data to database...");
@@ -3012,16 +3422,18 @@ public class TeamManager {
             for (Team team : teamNameCache.values()) {
                 try {
                     for (TeamPlayer member : team.getMembers()) {
-                        plugin.getLogger().info("Saving permissions for member " + member.getPlayerUuid() + " in team " + team.getName() +
-                            " - canUseEnderChest: " + member.canUseEnderChest() +
-                            ", canEditMembers: " + member.canEditMembers());
+                        plugin.getLogger()
+                                .info("Saving permissions for member " + member.getPlayerUuid() + " in team "
+                                        + team.getName() +
+                                        " - canUseEnderChest: " + member.canUseEnderChest() +
+                                        ", canEditMembers: " + member.canEditMembers());
                         storage.updateMemberPermissions(team.getId(), member.getPlayerUuid(),
-                            member.canWithdraw(), member.canUseEnderChest(),
-                            member.canSetHome(), member.canUseHome());
+                                member.canWithdraw(), member.canUseEnderChest(),
+                                member.canSetHome(), member.canUseHome());
                         storage.updateMemberEditingPermissions(team.getId(), member.getPlayerUuid(),
-                            member.canEditMembers(), member.canEditCoOwners(),
-                            member.canKickMembers(), member.canPromoteMembers(),
-                            member.canDemoteMembers());
+                                member.canEditMembers(), member.canEditCoOwners(),
+                                member.canKickMembers(), member.canPromoteMembers(),
+                                member.canDemoteMembers());
                     }
                     savedCount++;
                     plugin.getLogger().fine("Force saved team: " + team.getName());
@@ -3032,7 +3444,8 @@ public class TeamManager {
             }
         }
         if (errorCount > 0) {
-            plugin.getLogger().warning("Force save completed with " + errorCount + " errors out of " + (savedCount + errorCount) + " teams");
+            plugin.getLogger().warning("Force save completed with " + errorCount + " errors out of "
+                    + (savedCount + errorCount) + " teams");
         } else {
             if (plugin.getConfigManager().isDebugEnabled()) {
                 plugin.getDebugLogger().log("Successfully force saved all " + savedCount + " teams");

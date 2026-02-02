@@ -1,12 +1,12 @@
 name: justTeams
-version: '${project.version}'
+version: 2.4.0
 main: eu.kotori.justTeams.JustTeams
 api-version: '1.21'
 folia-supported: true
 load: POSTWORLD
 authors: [ kotori ]
 description: A powerful teams plugin for multi-server environments with full Folia, Paper, Spigot, and Purpur support.
-softdepend: [ Vault, PlaceholderAPI, PvPManager ]
+softdepend: [ Vault, PlaceholderAPI, PvPManager, packetevents ]
 commands:
   team:
     description: Main command for justTeams.

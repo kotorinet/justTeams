@@ -22,7 +22,7 @@
 # ===================================================================
 
 # Message configuration version - DO NOT MODIFY
-messages-version: 8
+messages-version: 9
 
 # ===================================================================
 #                         Core Branding
@@ -228,6 +228,7 @@ help_format: "<gray>/team <command> <white>- <description>"
 help_entries:
   gui: "Opens the team GUI."
   create: "<name> <tag> - Creates a team."
+  create_no_tag: "<name> - Creates a team."
   disband: "Disbands your team."
   invite: "<player> - Invites a player."
   kick: "<player> - Kicks a player."
@@ -240,6 +241,7 @@ help_entries:
   home: "Teleports to the team home."
   settag: "<tag> - Changes the team tag."
   setdesc: "<description> - Changes the team description."
+  rename: "<newName> - Renames the team (cooldown applies)."
   transfer: "<player> - Transfers ownership."
   pvp: "Toggles team PvP."
   bank: "[deposit|withdraw] [amount] - Manages the team bank."
@@ -253,6 +255,12 @@ help_entries:
   delwarp: "<name> - Deletes a team warp."
   warp: "<name> [password] - Teleports to a team warp."
   warps: "Lists all team warps."
+  blacklist: "<player> [reason] - Blacklists a player from your team."
+  unblacklist: "<player> - Unblacklists a player from your team."
+  admin_disband: "admin disband <teamName> - Admin command to disband a team."
+  platform: "Shows your platform information (Java/Bedrock)."
+  debug_permissions: "debug-permissions - Debugs the current permissions of your team."
+  debug_placeholders: "debug-placeholders - Tests all PlaceholderAPI placeholders for your team."
 usage_create: "<gray>Usage: /team create <name> <tag></gray>"
 usage_create_no_tag: "<gray>Usage: /team create <name></gray>"
 usage_invite: "<gray>Usage: /team invite <player></gray>"
@@ -406,4 +414,11 @@ invalid_item_format: "<red>Invalid item configuration for <white><feature></whit
 
 # Admin enderchest messages
 admin_enderchest_opened: "<green>Successfully opened enderchest for team <white><team_name></white>.</green>"
+invalid_color: "<red>Invalid color. Please use a valid color name (e.g., RED, BLUE, GREEN). type 'reset' to reset color.</red>"
+team_color_updated: "<green>Team color has been updated to <white><color></white>.</green>"
+team_color_reset: "<green>Team color has been reset to default.</green>"
 
+
+admin_teleported_home: "<green>You have been teleported to the home of team <white><team></white>.</green>"
+usage_admin_home: "<red>Usage: /team admin home <teamName></red>"
+admin_home_not_set: "<red>Team <white><team></white> does not have a home set.</red>"

@@ -1,4 +1,5 @@
 package eu.kotori.justTeams;
+
 import eu.kotori.justTeams.commands.TeamCommand;
 import eu.kotori.justTeams.commands.TeamMessageCommand;
 import eu.kotori.justTeams.config.ConfigManager;
@@ -40,8 +41,7 @@ import java.util.logging.Logger;
 import java.util.Map;
 import eu.kotori.justTeams.util.PAPIExpansion;
 import eu.kotori.justTeams.util.StartupMessage;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
-import me.clip.placeholderapi.PlaceholderAPIPlugin;
+
 public final class JustTeams extends JavaPlugin {
     private static JustTeams instance;
     private static NamespacedKey actionKey;
@@ -50,6 +50,7 @@ public final class JustTeams extends JavaPlugin {
     private StorageManager storageManager;
     private RedisManager redisManager;
     private TeamManager teamManager;
+    private eu.kotori.justTeams.team.GlowManager glowManager;
     private GUIManager guiManager;
     private TaskRunner taskRunner;
     private ChatInputManager chatInputManager;
@@ -64,31 +65,35 @@ public final class JustTeams extends JavaPlugin {
     private WebhookHelper webhookHelper;
     private MiniMessage miniMessage;
     private Economy economy;
-    private Chat chat; 
+    private Chat chat;
     private FeatureRestrictionManager featureRestrictionManager;
     private DataRecoveryManager dataRecoveryManager;
     private VersionChecker versionChecker;
+    private eu.kotori.justTeams.hooks.UltimateKothHook ultimateKothHook;
+    private eu.kotori.justTeams.api.CustomDataManager customDataManager;
     public boolean updateAvailable = false;
     public String latestVersion = "";
+
     public void onEnable() {
         instance = this;
         Logger logger = getLogger();
         logger.info("Starting JustTeams...");
-        
+
         actionKey = new NamespacedKey(this, "action");
         logger.info("Action key initialized");
-        
+
         String serverName = Bukkit.getServer().getName();
         String serverNameLower = serverName.toLowerCase();
         logger.info("Detected server: " + serverName);
-        
-        if (serverName.equals("Folia") || serverNameLower.contains("folia") || 
-            serverNameLower.equals("canvas") || serverNameLower.equals("petal") || serverNameLower.equals("leaf")) {
+
+        if (serverName.equals("Folia") || serverNameLower.contains("folia") ||
+                serverNameLower.equals("canvas") || serverNameLower.equals("petal") || serverNameLower.equals("leaf")
+                || serverNameLower.contains("luminol")) {
             logger.info("Folia-based server detected! Using threaded region scheduler support.");
         } else if (serverName.contains("Paper") || serverNameLower.contains("paper") ||
-                   serverName.equals("Purpur") || serverName.equals("Airplane") || 
-                   serverName.equals("Pufferfish") || serverNameLower.contains("universespigot") ||
-                   serverNameLower.equals("plazma") || serverNameLower.equals("mirai")) {
+                serverName.equals("Purpur") || serverName.equals("Airplane") ||
+                serverName.equals("Pufferfish") || serverNameLower.contains("universespigot") ||
+                serverNameLower.equals("plazma") || serverNameLower.equals("mirai")) {
             logger.info("Paper-based server detected. Using optimized scheduler.");
         } else if (serverName.equals("Spigot") || serverNameLower.contains("spigot")) {
             logger.info("Spigot-based server detected. Using standard Bukkit scheduler.");
@@ -97,30 +102,41 @@ public final class JustTeams extends JavaPlugin {
         } else {
             logger.info("Generic Bukkit-compatible server detected: " + serverName);
         }
-        
+
         miniMessage = MiniMessage.miniMessage();
-        
+
         try {
-            logger.info("Setting up economy integration...");
-            setupEconomy();
-            
             logger.info("Initializing managers...");
             initializeManagers();
-            
+
+            logger.info("Setting up economy integration...");
+            setupEconomy();
+
+            if (getConfig().getBoolean("bstats.enabled", true)) {
+                int pluginId = 28485;
+                org.bstats.bukkit.Metrics metrics = new org.bstats.bukkit.Metrics(this, pluginId);
+                logger.info("bStats Metrics enabled.");
+            } else {
+                logger.info("bStats Metrics disabled in config.");
+            }
+
             logger.info("Registering event listeners...");
             registerListeners();
-            
+
             logger.info("Registering commands...");
             registerCommands();
-            
+
             logger.info("Registering PlaceholderAPI...");
             registerPlaceholderAPI();
-            
+
             logger.info("Starting cross-server tasks...");
-            
+
+            logger.info("Registering UltimateKoth integration...");
+            registerUltimateKoth();
+
             StartupMessage.send();
             logger.info("JustTeams has been enabled successfully!");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.severe("Failed to enable JustTeams: " + e.getMessage());
             logger.log(java.util.logging.Level.SEVERE, "JustTeams enable error details", e);
             e.printStackTrace();
@@ -128,9 +144,17 @@ public final class JustTeams extends JavaPlugin {
             return;
         }
     }
+
     public void onDisable() {
         Logger logger = getLogger();
         logger.info("Disabling JustTeams...");
+        try {
+            if (ultimateKothHook != null) {
+                ultimateKothHook.unregisterGroupProvider();
+            }
+        } catch (Exception e) {
+            logger.warning("Error unregistering UltimateKoth: " + e.getMessage());
+        }
         try {
             if (taskRunner != null) {
                 taskRunner.cancelAllTasks();
@@ -152,7 +176,7 @@ public final class JustTeams extends JavaPlugin {
         } catch (Exception e) {
             logger.warning("Error cleaning up GUI throttles: " + e.getMessage());
         }
-        
+
         try {
             if (storageManager != null) {
                 storageManager.shutdown();
@@ -160,7 +184,7 @@ public final class JustTeams extends JavaPlugin {
         } catch (Exception e) {
             logger.warning("Error shutting down storage manager: " + e.getMessage());
         }
-        
+
         try {
             if (webhookManager != null) {
                 webhookManager.shutdown();
@@ -168,7 +192,7 @@ public final class JustTeams extends JavaPlugin {
         } catch (Exception e) {
             logger.warning("Error shutting down webhook manager: " + e.getMessage());
         }
-        
+
         try {
             if (redisManager != null) {
                 redisManager.shutdown();
@@ -176,9 +200,10 @@ public final class JustTeams extends JavaPlugin {
         } catch (Exception e) {
             logger.warning("Error shutting down Redis manager: " + e.getMessage());
         }
-        
+
         logger.info("JustTeams has been disabled.");
     }
+
     private void initializeManagers() {
         configManager = new ConfigManager(this);
         ConfigUpdater.updateAllConfigs(this);
@@ -229,12 +254,14 @@ public final class JustTeams extends JavaPlugin {
         }
 
         if (storageManager.getStorage() instanceof DatabaseStorage) {
-            DatabaseMigrationManager migrationManager = new DatabaseMigrationManager(this, (DatabaseStorage) storageManager.getStorage());
+            DatabaseMigrationManager migrationManager = new DatabaseMigrationManager(this,
+                    (DatabaseStorage) storageManager.getStorage());
             if (!migrationManager.performMigration()) {
-                getLogger().warning("Database migration completed with warnings. Some features may not work correctly.");
+                getLogger()
+                        .warning("Database migration completed with warnings. Some features may not work correctly.");
             }
         }
-        
+
         teamManager = new TeamManager(this);
         guiManager = new GUIManager(this);
         taskRunner = new TaskRunner(this);
@@ -243,13 +270,28 @@ public final class JustTeams extends JavaPlugin {
         aliasManager = new AliasManager(this);
         guiConfigManager = new GuiConfigManager(this);
         debugLogger = new DebugLogger(this);
+
+        getLogger().info("Initializing BedrockSupport...");
         bedrockSupport = new BedrockSupport(this);
+
+        getLogger().info("Initializing WebhookManager...");
         webhookManager = new DiscordWebhookManager(this);
         webhookHelper = new WebhookHelper(this);
+
+        getLogger().info("Initializing FeatureRestrictionManager...");
         featureRestrictionManager = new FeatureRestrictionManager(this);
-        dataRecoveryManager = new DataRecoveryManager(this); 
+
+        getLogger().info("Initializing DataRecoveryManager...");
+        dataRecoveryManager = new DataRecoveryManager(this);
+
+        getLogger().info("Initializing VersionChecker...");
         versionChecker = new VersionChecker(this);
-        versionChecker.check(); 
+        versionChecker.check();
+
+        customDataManager = new eu.kotori.justTeams.api.CustomDataManager(getLogger());
+
+        glowManager = new eu.kotori.justTeams.team.GlowManager(this);
+
         teamManager.cleanupEnderChestLocksOnStartup();
         if (storageManager.getStorage() instanceof DatabaseStorage) {
             startupManager = new StartupManager(this, (DatabaseStorage) storageManager.getStorage());
@@ -261,6 +303,7 @@ public final class JustTeams extends JavaPlugin {
         }
         startCrossServerTasks();
     }
+
     private void startCrossServerTasks() {
         String serverName = configManager.getServerIdentifier();
         long heartbeatInterval = configManager.getHeartbeatInterval();
@@ -302,7 +345,7 @@ public final class JustTeams extends JavaPlugin {
                     getLogger().warning("Error in critical sync: " + e.getMessage());
                 }
             }, criticalInterval, criticalInterval);
-            
+
             taskRunner.runAsyncTaskTimer(() -> {
                 try {
                     int processed = teamManager.processCrossServerMessages();
@@ -379,6 +422,7 @@ public final class JustTeams extends JavaPlugin {
             }, configManager.getConnectionPoolLogInterval() * 60L, configManager.getConnectionPoolLogInterval() * 60L);
         }
     }
+
     private void registerListeners() {
         getServer().getPluginManager().registerEvents(new TeamGUIListener(this), this);
         getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this), this);
@@ -386,14 +430,25 @@ public final class JustTeams extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PvPListener(this), this);
         teamChatListener = new TeamChatListener(this);
         getServer().getPluginManager().registerEvents(teamChatListener, this);
-        
+
         if (configManager.isTeamEnderchestEnabled()) {
             getServer().getPluginManager().registerEvents(new TeamEnderChestListener(this), this);
             getLogger().info("Team Enderchest feature is enabled - listener registered");
         } else {
             getLogger().info("Team Enderchest feature is disabled - listener not registered");
         }
+
+        if (getServer().getPluginManager().isPluginEnabled("UltimateKoth")) {
+            try {
+                ultimateKothHook = new eu.kotori.justTeams.hooks.UltimateKothHook(this);
+                getServer().getPluginManager().registerEvents(ultimateKothHook, this);
+                getLogger().info("UltimateKoth detected - listener registered");
+            } catch (NoClassDefFoundError | Exception e) {
+                getLogger().warning("Failed to register UltimateKoth hook: " + e.getMessage());
+            }
+        }
     }
+
     private void registerCommands() {
         TeamCommand teamCommand = new TeamCommand(this);
         TeamMessageCommand teamMessageCommand = new TeamMessageCommand(this);
@@ -412,6 +467,7 @@ public final class JustTeams extends JavaPlugin {
         aliasManager.registerAliases();
         commandManager.registerCommands();
     }
+
     private void registerPlaceholderAPI() {
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
@@ -433,83 +489,126 @@ public final class JustTeams extends JavaPlugin {
             getLogger().warning("Download from: https://www.spigotmc.org/resources/6245/");
         }
     }
+
+    private void registerUltimateKoth() {
+        if (ultimateKothHook != null) {
+            taskRunner.runTaskLater(() -> {
+                ultimateKothHook.registerGroupProvider();
+            }, 20L); 
+        }
+    }
+
     public static JustTeams getInstance() {
         return instance;
     }
+
     public static NamespacedKey getActionKey() {
         return actionKey;
     }
+
     public ConfigManager getConfigManager() {
         return configManager;
     }
+
     public MessageManager getMessageManager() {
         return messageManager;
     }
+
     public StorageManager getStorageManager() {
         return storageManager;
     }
+
     public RedisManager getRedisManager() {
         return redisManager;
     }
+
     public TeamManager getTeamManager() {
         return teamManager;
     }
+
+    public eu.kotori.justTeams.team.GlowManager getGlowManager() {
+        return glowManager;
+    }
+
     public TeamChatListener getTeamChatListener() {
         return teamChatListener;
     }
+
     public GUIManager getGuiManager() {
         return guiManager;
     }
+
     public TaskRunner getTaskRunner() {
         return taskRunner;
     }
+
     public ChatInputManager getChatInputManager() {
         return chatInputManager;
     }
+
     public CommandManager getCommandManager() {
         return commandManager;
     }
+
     public AliasManager getAliasManager() {
         return aliasManager;
     }
+
     public GuiConfigManager getGuiConfigManager() {
         return guiConfigManager;
     }
+
     public StartupManager getStartupManager() {
         return startupManager;
     }
+
     public DebugLogger getDebugLogger() {
         return debugLogger;
     }
-    
+
     public FeatureRestrictionManager getFeatureRestrictionManager() {
         return featureRestrictionManager;
     }
-    
+
     public DataRecoveryManager getDataRecoveryManager() {
         return dataRecoveryManager;
     }
-    
+
     public DiscordWebhookManager getWebhookManager() {
         return webhookManager;
     }
-    
+
     public WebhookHelper getWebhookHelper() {
         return webhookHelper;
     }
-    
+
     public MiniMessage getMiniMessage() {
         return miniMessage;
     }
-    
+
     public Economy getEconomy() {
         return economy;
     }
-    
+
     public BedrockSupport getBedrockSupport() {
         return bedrockSupport;
     }
+
+    public eu.kotori.justTeams.api.CustomDataManager getCustomDataManager() {
+        return customDataManager;
+    }
+
     private boolean setupEconomy() {
+        if (getServer().getPluginManager().getPlugin("BoxChat") != null) {
+            getLogger().info("BoxChat found! Using BoxChat API for chat messages.");
+        }
+
+        if (getServer().getPluginManager().getPlugin("packetevents") == null
+                && getConfigManager().isTeamGlowEnabled()) {
+            getLogger().warning("PacketEvents not found! Team Glow feature will be DISABLED.");
+            getLogger().warning(
+                    "Please install PacketEvents to use the glow feature: https://github.com/retrooper/packetevents");
+        }
         if (getServer().getPluginManager().getPlugin("Vault") == null) {
             getLogger().warning("Vault plugin not found! Economy features will be disabled.");
             return false;
@@ -523,7 +622,7 @@ public final class JustTeams extends JavaPlugin {
         if (economy != null) {
             getLogger().info("Economy provider found: " + economy.getName());
         }
-        
+
         RegisteredServiceProvider<Chat> chatProvider = getServer().getServicesManager().getRegistration(Chat.class);
         if (chatProvider != null) {
             chat = chatProvider.getProvider();
@@ -531,10 +630,10 @@ public final class JustTeams extends JavaPlugin {
         } else {
             getLogger().info("No chat provider found. Player prefixes will not be available.");
         }
-        
+
         return economy != null;
     }
-    
+
     public String getPlayerPrefix(org.bukkit.entity.Player player) {
         if (chat == null) {
             return "";
@@ -546,7 +645,7 @@ public final class JustTeams extends JavaPlugin {
             return "";
         }
     }
-    
+
     public String getPlayerSuffix(org.bukkit.entity.Player player) {
         if (chat == null) {
             return "";

@@ -21,21 +21,23 @@ public class TaskRunner {
         this.plugin = plugin;
         String serverName = plugin.getServer().getName();
         String serverNameLower = serverName.toLowerCase();
-        
-        this.isFolia = serverName.equals("Folia") 
+
+        this.isFolia = serverName.equals("Folia")
                 || serverNameLower.contains("folia")
-                || serverNameLower.equals("canvas") 
-                || serverNameLower.equals("petal") 
-                || serverNameLower.equals("leaf");
-        
-        this.isPaper = serverName.equals("Paper") 
+                || serverNameLower.equals("canvas")
+                || serverNameLower.equals("petal")
+                || serverNameLower.equals("leaf")
+                || serverNameLower.contains("luminol");
+
+        this.isPaper = serverName.equals("Paper")
                 || serverNameLower.contains("paper")
-                || serverName.equals("Purpur") 
-                || serverName.equals("Airplane") 
-                || serverName.equals("Pufferfish") 
+                || serverName.equals("Purpur")
+                || serverName.equals("Airplane")
+                || serverName.equals("Pufferfish")
                 || serverNameLower.contains("universespigot")
                 || serverNameLower.equals("plazma")
-                || serverNameLower.equals("mirai");
+                || serverNameLower.equals("mirai")
+                || serverNameLower.contains("luminol");
     }
 
     public void run(Runnable task) {
@@ -50,15 +52,15 @@ public class TaskRunner {
         if (task == null) {
             return;
         }
-        
+
         if (!plugin.isEnabled()) {
             runTaskLater(() -> runAsyncInternal(task), 1);
             return;
         }
-        
+
         runAsyncInternal(task);
     }
-    
+
     private void runAsyncInternal(Runnable task) {
         if (isFolia) {
             plugin.getServer().getAsyncScheduler().runNow(plugin, scheduledTask -> {
@@ -104,7 +106,8 @@ public class TaskRunner {
     public CancellableTask runEntityTaskLater(Entity entity, Runnable task, long delay) {
         if (isFolia) {
             long foliaDelay = Math.max(1L, delay);
-            ScheduledTask scheduledTask = entity.getScheduler().runDelayed(plugin, scheduledTask1 -> task.run(), null, foliaDelay);
+            ScheduledTask scheduledTask = entity.getScheduler().runDelayed(plugin, scheduledTask1 -> task.run(), null,
+                    foliaDelay);
             return scheduledTask::cancel;
         } else {
             BukkitTask bukkitTask = plugin.getServer().getScheduler().runTaskLater(plugin, task, delay);
@@ -116,7 +119,8 @@ public class TaskRunner {
         if (isFolia) {
             long foliaDelay = Math.max(1L, delay);
             long foliaPeriod = Math.max(1L, period);
-            ScheduledTask scheduledTask = entity.getScheduler().runAtFixedRate(plugin, scheduledTask1 -> task.run(), null, foliaDelay, foliaPeriod);
+            ScheduledTask scheduledTask = entity.getScheduler().runAtFixedRate(plugin, scheduledTask1 -> task.run(),
+                    null, foliaDelay, foliaPeriod);
             return scheduledTask::cancel;
         } else {
             BukkitTask bukkitTask = plugin.getServer().getScheduler().runTaskTimer(plugin, task, delay, period);
@@ -135,7 +139,8 @@ public class TaskRunner {
     public CancellableTask runTaskLater(Runnable task, long delay) {
         if (isFolia) {
             long foliaDelay = Math.max(1L, delay);
-            ScheduledTask scheduledTask = plugin.getServer().getGlobalRegionScheduler().runDelayed(plugin, scheduledTask1 -> task.run(), foliaDelay);
+            ScheduledTask scheduledTask = plugin.getServer().getGlobalRegionScheduler().runDelayed(plugin,
+                    scheduledTask1 -> task.run(), foliaDelay);
             return scheduledTask::cancel;
         } else {
             BukkitTask bukkitTask = plugin.getServer().getScheduler().runTaskLater(plugin, task, delay);
@@ -147,7 +152,8 @@ public class TaskRunner {
         if (isFolia) {
             long foliaDelay = Math.max(1L, delay);
             long foliaPeriod = Math.max(1L, period);
-            ScheduledTask scheduledTask = plugin.getServer().getGlobalRegionScheduler().runAtFixedRate(plugin, scheduledTask1 -> task.run(), foliaDelay, foliaPeriod);
+            ScheduledTask scheduledTask = plugin.getServer().getGlobalRegionScheduler().runAtFixedRate(plugin,
+                    scheduledTask1 -> task.run(), foliaDelay, foliaPeriod);
             return scheduledTask::cancel;
         } else {
             BukkitTask bukkitTask = plugin.getServer().getScheduler().runTaskTimer(plugin, task, delay, period);
@@ -158,7 +164,8 @@ public class TaskRunner {
     public CancellableTask runAsyncTaskLater(Runnable task, long delay) {
         if (isFolia) {
             long delayMs = Math.max(50L, delay * 50);
-            ScheduledTask scheduledTask = plugin.getServer().getAsyncScheduler().runDelayed(plugin, scheduledTask1 -> task.run(), delayMs, TimeUnit.MILLISECONDS);
+            ScheduledTask scheduledTask = plugin.getServer().getAsyncScheduler().runDelayed(plugin,
+                    scheduledTask1 -> task.run(), delayMs, TimeUnit.MILLISECONDS);
             return scheduledTask::cancel;
         } else {
             BukkitTask bukkitTask = plugin.getServer().getScheduler().runTaskLaterAsynchronously(plugin, task, delay);
@@ -170,10 +177,12 @@ public class TaskRunner {
         if (isFolia) {
             long delayMs = Math.max(50L, delay * 50);
             long periodMs = Math.max(50L, period * 50);
-            ScheduledTask scheduledTask = plugin.getServer().getAsyncScheduler().runAtFixedRate(plugin, scheduledTask1 -> task.run(), delayMs, periodMs, TimeUnit.MILLISECONDS);
+            ScheduledTask scheduledTask = plugin.getServer().getAsyncScheduler().runAtFixedRate(plugin,
+                    scheduledTask1 -> task.run(), delayMs, periodMs, TimeUnit.MILLISECONDS);
             return scheduledTask::cancel;
         } else {
-            BukkitTask bukkitTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, task, delay, period);
+            BukkitTask bukkitTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, task, delay,
+                    period);
             return bukkitTask::cancel;
         }
     }

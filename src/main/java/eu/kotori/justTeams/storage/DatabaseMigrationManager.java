@@ -1,4 +1,5 @@
 package eu.kotori.justTeams.storage;
+
 import eu.kotori.justTeams.JustTeams;
 import java.io.File;
 import java.sql.Connection;
@@ -10,14 +11,17 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
+
 public class DatabaseMigrationManager {
     private final JustTeams plugin;
     private final DatabaseStorage databaseStorage;
     private static final int CURRENT_SCHEMA_VERSION = 4;
+
     public DatabaseMigrationManager(JustTeams plugin, DatabaseStorage databaseStorage) {
         this.plugin = plugin;
         this.databaseStorage = databaseStorage;
     }
+
     public boolean performMigration() {
         try {
             plugin.getLogger().info("Starting database migration process...");
@@ -25,7 +29,8 @@ public class DatabaseMigrationManager {
             int currentVersion = getCurrentSchemaVersion();
             plugin.getLogger().info("Current database schema version: " + currentVersion);
             if (currentVersion < CURRENT_SCHEMA_VERSION) {
-                plugin.getLogger().info("Database schema is outdated. Running migrations from version " + currentVersion + " to " + CURRENT_SCHEMA_VERSION);
+                plugin.getLogger().info("Database schema is outdated. Running migrations from version " + currentVersion
+                        + " to " + CURRENT_SCHEMA_VERSION);
                 if (!runMigrations(currentVersion)) {
                     plugin.getLogger().severe("Database migration failed!");
                     return false;
@@ -47,6 +52,7 @@ public class DatabaseMigrationManager {
             return false;
         }
     }
+
     private void initializeSchemaVersion() throws SQLException {
         try (Connection conn = databaseStorage.getConnection()) {
             String createTableSQL = "CREATE TABLE IF NOT EXISTS schema_version (" +
@@ -68,6 +74,7 @@ public class DatabaseMigrationManager {
             }
         }
     }
+
     private int getCurrentSchemaVersion() {
         try (Connection conn = databaseStorage.getConnection()) {
             if (conn == null || conn.isClosed()) {
@@ -85,12 +92,14 @@ public class DatabaseMigrationManager {
         }
         return 1;
     }
+
     private boolean runMigrations(int fromVersion) {
         try {
             List<Migration> migrations = getMigrations();
             for (Migration migration : migrations) {
                 if (migration.getVersion() > fromVersion && migration.getVersion() <= CURRENT_SCHEMA_VERSION) {
-                    plugin.getLogger().info("Running migration " + migration.getVersion() + ": " + migration.getDescription());
+                    plugin.getLogger()
+                            .info("Running migration " + migration.getVersion() + ": " + migration.getDescription());
                     if (!migration.execute(databaseStorage)) {
                         plugin.getLogger().severe("Migration " + migration.getVersion() + " failed!");
                         return false;
@@ -104,6 +113,7 @@ public class DatabaseMigrationManager {
             return false;
         }
     }
+
     private void recordMigration(int version, String description) throws SQLException {
         try (Connection conn = databaseStorage.getConnection()) {
             String sql = "INSERT INTO schema_version (version, description) VALUES (?, ?)";
@@ -114,18 +124,22 @@ public class DatabaseMigrationManager {
             }
         }
     }
+
     private List<Migration> getMigrations() {
         List<Migration> migrations = new ArrayList<>();
         migrations.add(new Migration(2, "Add member permission columns", this::migration2_AddMemberPermissions));
-        migrations.add(new Migration(3, "Add blacklist table and fix column issues", this::migration3_AddBlacklistAndFixColumns));
-        migrations.add(new Migration(4, "Add cross-server tables and missing features", this::migration4_AddCrossServerTables));
+        migrations.add(new Migration(3, "Add blacklist table and fix column issues",
+                this::migration3_AddBlacklistAndFixColumns));
+        migrations.add(new Migration(4, "Add cross-server tables and missing features",
+                this::migration4_AddCrossServerTables));
         return migrations;
     }
+
     private boolean migration2_AddMemberPermissions(DatabaseStorage storage) {
         try {
             String[] columns = {
-                "can_edit_members", "can_edit_co_owners", "can_kick_members",
-                "can_promote_members", "can_demote_members"
+                    "can_edit_members", "can_edit_co_owners", "can_kick_members",
+                    "can_promote_members", "can_demote_members"
             };
             for (String column : columns) {
                 if (!hasColumn("donut_team_members", column)) {
@@ -139,11 +153,12 @@ public class DatabaseMigrationManager {
             return false;
         }
     }
+
     private boolean migration3_AddBlacklistAndFixColumns(DatabaseStorage storage) {
         try {
             createBlacklistTable();
             String[] teamColumns = {
-                "is_public"
+                    "is_public"
             };
             for (String column : teamColumns) {
                 if (!hasColumn("donut_teams", column)) {
@@ -156,6 +171,7 @@ public class DatabaseMigrationManager {
             return false;
         }
     }
+
     private boolean migration4_AddCrossServerTables(DatabaseStorage storage) {
         try {
 
@@ -166,6 +182,7 @@ public class DatabaseMigrationManager {
             return false;
         }
     }
+
     private void createCrossServerTables() throws SQLException {
         try (Connection conn = databaseStorage.getConnection()) {
 
@@ -248,6 +265,7 @@ public class DatabaseMigrationManager {
             plugin.getLogger().info("Cross-server tables created/verified successfully.");
         }
     }
+
     private void addColumnSafely(String tableName, String columnName, String columnDefinition) throws SQLException {
         try (Connection conn = databaseStorage.getConnection()) {
             String sql = "ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + columnDefinition;
@@ -256,22 +274,29 @@ public class DatabaseMigrationManager {
                 plugin.getLogger().info("Added column " + columnName + " to " + tableName);
             }
         } catch (SQLException e) {
-            if (e.getMessage().contains("already exists") || e.getMessage().contains("42S21") ||
-                e.getMessage().contains("duplicate column name")) {
+            if (e.getErrorCode() == 42121 || e.getErrorCode() == 1060 || "42S21".equals(e.getSQLState()) ||
+                    e.getMessage().toLowerCase().contains("already exists") ||
+                    e.getMessage().toLowerCase().contains("duplicate column")) {
                 plugin.getLogger().info("Column " + columnName + " already exists in " + tableName + ", skipping.");
             } else {
                 throw e;
             }
         }
     }
+
     private boolean hasColumn(String tableName, String columnName) throws SQLException {
         try (Connection conn = databaseStorage.getConnection()) {
             DatabaseMetaData md = conn.getMetaData();
             try (ResultSet rs = md.getColumns(null, null, tableName, columnName)) {
+                if (rs.next())
+                    return true;
+            }
+            try (ResultSet rs = md.getColumns(null, null, tableName.toUpperCase(), columnName.toUpperCase())) {
                 return rs.next();
             }
         }
     }
+
     private void updateExistingMemberPermissions() {
         try (Connection conn = databaseStorage.getConnection()) {
             String sql = "UPDATE donut_team_members SET " +
@@ -291,6 +316,7 @@ public class DatabaseMigrationManager {
             plugin.getLogger().warning("Could not update existing member permissions: " + e.getMessage());
         }
     }
+
     private void createBlacklistTable() {
         try (Connection conn = databaseStorage.getConnection()) {
             String createTableSQL = "CREATE TABLE IF NOT EXISTS donut_team_blacklist (" +
@@ -313,15 +339,16 @@ public class DatabaseMigrationManager {
             plugin.getLogger().warning("Could not create blacklist table: " + e.getMessage());
         }
     }
+
     private boolean validateDatabaseIntegrity() {
         try {
             plugin.getLogger().info("Validating database integrity...");
             String[] requiredTables = {
-                "donut_teams", "donut_team_members", "donut_team_homes",
-                "donut_team_warps", "donut_join_requests", "donut_servers",
-                "donut_pending_teleports", "donut_ender_chest_locks",
-                "donut_cross_server_updates", "donut_cross_server_messages",
-                "donut_team_blacklist", "donut_team_locks", "schema_version"
+                    "donut_teams", "donut_team_members", "donut_team_homes",
+                    "donut_team_warps", "donut_join_requests", "donut_servers",
+                    "donut_pending_teleports", "donut_ender_chest_locks",
+                    "donut_cross_server_updates", "donut_cross_server_messages",
+                    "donut_team_blacklist", "donut_team_locks", "schema_version"
             };
             for (String table : requiredTables) {
                 if (!tableExists(table)) {
@@ -339,23 +366,31 @@ public class DatabaseMigrationManager {
             return false;
         }
     }
+
     private boolean tableExists(String tableName) throws SQLException {
         try (Connection conn = databaseStorage.getConnection()) {
             DatabaseMetaData md = conn.getMetaData();
             try (ResultSet rs = md.getTables(null, null, tableName, null)) {
+                if (rs.next())
+                    return true;
+            }
+            try (ResultSet rs = md.getTables(null, null, tableName.toUpperCase(), null)) {
                 return rs.next();
             }
         }
     }
+
     private boolean validateTableColumns() throws SQLException {
-        String[] teamColumns = {"id", "name", "tag", "owner_uuid", "pvp_enabled", "is_public", "balance", "kills", "deaths"};
+        String[] teamColumns = { "id", "name", "tag", "owner_uuid", "pvp_enabled", "is_public", "balance", "kills",
+                "deaths" };
         for (String column : teamColumns) {
             if (!hasColumn("donut_teams", column)) {
                 plugin.getLogger().warning("Required column " + column + " is missing from donut_teams table!");
                 return false;
             }
         }
-        String[] memberColumns = {"player_uuid", "team_id", "role", "join_date", "can_withdraw", "can_use_enderchest", "can_set_home", "can_use_home"};
+        String[] memberColumns = { "player_uuid", "team_id", "role", "join_date", "can_withdraw", "can_use_enderchest",
+                "can_set_home", "can_use_home" };
         for (String column : memberColumns) {
             if (!hasColumn("donut_team_members", column)) {
                 plugin.getLogger().warning("Required column " + column + " is missing from donut_team_members table!");
@@ -364,6 +399,7 @@ public class DatabaseMigrationManager {
         }
         return true;
     }
+
     private boolean repairDatabase() {
         try {
             plugin.getLogger().info("Attempting to repair database...");
@@ -381,20 +417,30 @@ public class DatabaseMigrationManager {
             return false;
         }
     }
+
     private interface MigrationExecutor {
         boolean execute(DatabaseStorage storage) throws Exception;
     }
+
     private static class Migration {
         private final int version;
         private final String description;
         private final MigrationExecutor executor;
+
         public Migration(int version, String description, MigrationExecutor executor) {
             this.version = version;
             this.description = description;
             this.executor = executor;
         }
-        public int getVersion() { return version; }
-        public String getDescription() { return description; }
+
+        public int getVersion() {
+            return version;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
         public boolean execute(DatabaseStorage storage) throws Exception {
             return executor.execute(storage);
         }
