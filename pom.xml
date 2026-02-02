@@ -6,7 +6,7 @@
 
     <groupId>eu.kotori</groupId>
     <artifactId>JustTeams</artifactId>
-    <version>2.3.6</version>
+    <version>2.4.0</version>
     <packaging>jar</packaging>
 
     <name>JustTeams</name>
@@ -57,6 +57,14 @@
                                 <relocation>
                                     <pattern>org.apache.commons.pool2</pattern>
                                     <shadedPattern>eu.kotori.justTeams.libs.pool2</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>fr.skytasul.glowingentities</pattern>
+                                    <shadedPattern>eu.kotori.justTeams.libs.glowingentities</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.bstats</pattern>
+                                    <shadedPattern>eu.kotori.justTeams.libs.bstats</shadedPattern>
                                 </relocation>
                             </relocations>
                             <filters>
@@ -139,7 +147,26 @@
             <scope>provided</scope>
         </dependency>
 
+        <dependency>
+            <groupId>com.github.UlrichBR</groupId>
+            <artifactId>UKoth-API</artifactId>
+            <version>2.10.0-R2</version>
+            <scope>provided</scope>
+        </dependency>
 
+        <dependency>
+            <groupId>com.github.retrooper</groupId>
+            <artifactId>packetevents-spigot</artifactId>
+            <version>2.11.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.SkytAsul</groupId>
+            <artifactId>GlowingEntities</artifactId>
+            <version>1.4.1</version>
+            <scope>compile</scope>
+        </dependency>
 
         <dependency>
             <groupId>com.zaxxer</groupId>
@@ -162,7 +189,6 @@
             <scope>compile</scope>
         </dependency>
 
-        <!-- Redis Client for instant cross-server communication -->
         <dependency>
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
@@ -174,6 +200,13 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-nop</artifactId>
             <version>2.0.13</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.bstats</groupId>
+            <artifactId>bstats-bukkit</artifactId>
+            <version>3.0.2</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>
